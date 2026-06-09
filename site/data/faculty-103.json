@@ -1,0 +1,10 @@
+{
+  "id": 103,
+  "name": "Ponnurangam Kumaraguru",
+  "bio": "Ponnurangam Kumaraguru is a Professor of Computer Science at IIIT Hyderabad and holds a visiting position at IIIT-Delhi. His research focuses on Privacy and Security in Online Social Media.",
+  "institution": {"id": 7, "name": "IIIT Hyderabad"},
+  "pubs": [
+    {"title":"Privacy and Security in Online Social Media", "year":2023, "conference": "IEEE S&P"},
+    {"title":"Measuring and Mitigating Privacy Risks in Social Networks", "year":2022, "conference": "CCS"}
+  ]
+}

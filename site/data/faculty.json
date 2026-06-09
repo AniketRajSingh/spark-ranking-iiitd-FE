@@ -1,0 +1,10 @@
+{
+  "id": 101,
+  "name": "Pankaj K. Agarwal",
+  "bio": "Pankaj K. Agarwal is a Distinguished Professor of Computer Science at Duke University. He is also a visiting professor at IIIT-Delhi. His research interests include computational geometry, database systems, and sensor networks.",
+  "institution": {"id": 8, "name": "IIIT Delhi"},
+  "pubs": [
+    {"title":"Geometric Algorithms for Big Data", "year":2022, "conference": "SoCG"},
+    {"title":"On Range Searching with Semialgebraic Sets", "year":2021, "conference": "STOC"}
+  ]
+}

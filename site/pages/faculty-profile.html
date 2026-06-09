@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>ICSRank — Faculty Profile</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+  <body>
+    <div id="navbar-placeholder"></div>
+
+    <main class="max-w-4xl mx-auto px-4 py-6 faculty-profile-page">
+      <section class="bg-white shadow rounded p-6 mb-6">
+        <h2 id="faculty-name" class="text-2xl font-semibold text-gray-900"></h2>
+        <p id="faculty-bio" class="mt-2 text-gray-700"></p>
+      </section>
+
+      <section class="bg-white shadow rounded p-6">
+        <h3 class="text-lg font-semibold mb-3">Publications</h3>
+        <ul id="faculty-pubs" class="list-disc pl-5 space-y-2"></ul>
+      </section>
+    </main>
+
+    <footer class="max-w-6xl mx-auto px-4 py-6 text-gray-600 text-sm">
+      <p>© ICSRank</p>
+    </footer>
+  <script src="/site/js/navbar.js"></script>
+  <script src="/site/js/config.js"></script>
+  <script src="/site/js/widgets/FacultyProfile.js"></script>
+  <script src="/site/js/faculty-profile.js"></script>
+  </body>
+</html>

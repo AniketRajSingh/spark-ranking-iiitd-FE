@@ -1,0 +1,16 @@
+{
+  "id": 8,
+  "name": "IIIT Delhi",
+  "summary": "Indraprastha Institute of Information Technology, Delhi is a state university located in Delhi, India. It is a research-oriented university with a focus on computer science and interdisciplinary areas.",
+  "website": "https://www.iiitd.ac.in/",
+  "top_faculty": [
+    {"id": 101, "name":"Pankaj K. Agarwal", "score": 410, "url": "/site/pages/faculty-profile.html?id=101"},
+    {"id": 102, "name":"Rajiv Ratn Shah", "score": 350, "url": "/site/pages/faculty-profile.html?id=102"},
+    {"id": 103, "name":"Ponnurangam Kumaraguru", "score": 320, "url": "/site/pages/faculty-profile.html?id=103"}
+  ],
+  "publications": [
+    {"title": "A Survey on Deep Learning for Fake News Detection", "year": 2023, "conference": "IJCAI"},
+    {"title": "Geometric Algorithms for Big Data", "year": 2022, "conference": "SoCG"},
+    {"title": "Privacy and Security in Online Social Media", "year": 2023, "conference": "IEEE S&P"}
+  ]
+}

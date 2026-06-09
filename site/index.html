@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>ICSRank — Home</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+  <body>
+    <div id="navbar-placeholder"></div>
+
+    <main class="max-w-6xl mx-auto px-4 py-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div class="lg:col-span-2">
+        <section class="bg-white shadow rounded p-6 mb-6">
+          <h2 class="text-2xl font-semibold text-gray-900">Transparent rankings for Indian CS research</h2>
+          <p class="mt-2 text-gray-700">Rankings based on CORE A / A* publications, DBLP verification and IRINS mappings.</p>
+        </section>
+
+        <section class="bg-white shadow rounded p-6">
+          <h3 class="text-lg font-semibold mb-4">National Rankings</h3>
+          <div id="ranking-table">
+            <!-- RankingTableWidget will render here -->
+          </div>
+        </section>
+      </div>
+
+      <aside class="lg:col-span-1">
+        <div id="filter-panel">
+          <!-- FilterWidget will render here -->
+        </div>
+      </aside>
+    </main>
+
+    <footer class="max-w-6xl mx-auto px-4 py-6 text-gray-600 text-sm">
+      <p>© ICSRank — Transparent research rankings</p>
+    </footer>
+
+  <script src="/site/js/navbar.js"></script>
+  <script src="/site/js/config.js"></script>
+  <script src="/site/js/widgets/Filter.js"></script>
+  <script src="/site/js/widgets/FullDataTable.js"></script>
+  <script src="/site/js/widgets/RankingTable.js"></script>
+  <script src="/site/js/app.js"></script>
+  </body>
+</html>

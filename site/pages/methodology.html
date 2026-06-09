@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>ICSRank — Methodology</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+  <body>
+    <div id="navbar-placeholder"></div>
+
+  <main class="max-w-4xl mx-auto px-4 py-6">
+    <div class="bg-white shadow rounded p-6">
+      <h2 class="text-2xl font-semibold mb-3">Ranking Methodology</h2>
+      <p class="text-gray-700">Our goal is to provide a transparent and reproducible ranking of Indian computer science research institutions.</p>
+            
+      <hr class="my-4">
+
+            <h4>Eligible Conferences</h4>
+            <p>We only consider publications in top-tier, highly-selective conferences. The list of eligible venues is sourced from the CORE Rankings, specifically those rated <strong>A*</strong> and <strong>A</strong>.</p>
+
+            <h4 style="margin-top: 1.5em;">Scoring Weights</h4>
+            <p>Publications are weighted based on the prestige of the conference:</p>
+            <ul>
+                <li><strong>CORE A* Conference:</strong> 4 points</li>
+                <li><strong>CORE A Conference:</strong> 2 points</li>
+            </ul>
+
+            <h4 style="margin-top: 1.5em;">Author Credit Allocation</h4>
+            <p>We use a fractional credit model. Credit for a single publication is divided equally among all its authors. For example:</p>
+            <ul>
+                <li>A paper with 1 author receives 1.0 credit.</li>
+                <li>A paper with 2 authors gives each 0.5 credit.</li>
+                <li>A paper with 5 authors gives each 0.2 credit.</li>
+            </ul>
+
+            <h4 style="margin-top: 1.5em;">Calculating Institution Score</h4>
+            <p>An institution's total score is the sum of the credits its affiliated faculty have accumulated over the selected period. The formula is:</p>
+            <p><em>Score = &Sigma; (Weight &times; Credit)</em></p>
+            
+            <h4 style="margin-top: 1.5em;">Data Sources</h4>
+            <p>The system is built on three primary data sources:</p>
+            <ul>
+                <li><strong>IRINS:</strong> Used for initial faculty and institution mapping within India.</li>
+                <li><strong>DBLP:</strong> The primary source for publication data, used to verify papers and authorship.</li>
+                <li><strong>CORE:</strong> Provides the conference rankings and quality signals.</li>
+            </ul>
+
+            <h4 style="margin-top: 1.5em;">Transparency</h4>
+            <p>Every score is designed to be fully transparent. The goal is that every ranking can be drilled down to the individual publications and authors that contributed to it.</p>
+    </div>
+  </main>
+
+    <footer class="max-w-6xl mx-auto px-4 py-6 text-gray-600 text-sm">
+      <p>© ICSRank</p>
+    </footer>
+  <script src="/site/js/navbar.js"></script>
+  <script src="/site/js/config.js"></script>
+  </body>
+</html>
