@@ -32,28 +32,23 @@
   </section>
 
   <!-- Main Grid -->
-  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-    <div class="flex flex-col lg:flex-row gap-6">
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+    
+    <!-- Top Filter Panel -->
+    <div id="filter-panel">
+      <!-- FilterWidget renders here -->
+    </div>
 
-      <!-- Conference List (Left) -->
-      <div class="flex-1 min-w-0">
-        <div class="card p-0 overflow-hidden bg-white">
-          <div class="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-            <h2 class="text-base font-semibold text-gray-800 font-sans">Eligible Venues</h2>
-          </div>
-          <div id="conference-list" aria-busy="true" aria-live="polite">
-            <!-- ConferenceListWidget renders here -->
-          </div>
+    <!-- Conference List -->
+    <div class="w-full">
+      <div class="card p-0 overflow-hidden bg-white">
+        <div class="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+          <h2 class="text-base font-semibold text-gray-800 font-sans">Eligible Venues</h2>
+        </div>
+        <div id="conference-list" aria-busy="true" aria-live="polite">
+          <!-- ConferenceListWidget renders here -->
         </div>
       </div>
-
-      <!-- Filters (Right) -->
-      <aside class="w-full lg:w-72 xl:w-80 flex-shrink-0">
-        <div id="filter-panel">
-          <!-- FilterWidget renders here -->
-        </div>
-      </aside>
-
     </div>
   </main>
 

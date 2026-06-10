@@ -80,7 +80,19 @@ export default class FacultyProfileWidget {
     const aPts       = data.a_score       != null ? Number(data.a_score).toFixed(2)        : null;
 
     // Publications list
-    const pubs = data.publications || data.pubs || [];
+    let pubs = data.publications || data.pubs || [];
+    if (!pubs.length && Array.isArray(data.authorships)) {
+      pubs = data.authorships.map(a => {
+        const p = a.publication || a;
+        return {
+          title: p.title || '',
+          year: p.year || '',
+          conference: p.conference || p.venue || '',
+          core_rank: p.core_rank || p.rank || '',
+        };
+      }).filter(p => p.title);
+    }
+
     const pubsHTML = pubs.length
       ? pubs.map(p => {
           const title = escapeHTML(p.title || '');

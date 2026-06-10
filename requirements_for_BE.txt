@@ -187,8 +187,49 @@ Fetches details of a specific faculty member by their ID.
       "conference": { "acronym": "CVPR", "core_rank": "A*" },
       "core_rank": "A*"
     }
+  ],
+  "authorships": [
+    {
+      "id": 225,
+      "publication": {
+        "id": 154,
+        "title": "Robust Semantic Segmentation on Edge Devices",
+        "year": 2023,
+        "venue": "CVPR",
+        "core_rank": "A*"
+      }
+    }
   ]
 }
+```
+*Note: The frontend supports both "publications" directly or parsing nested objects inside "authorships" (Django through-model serializer array format).*
+
+---
+
+### 8b. Faculty Leaderboard & Search
+Returns the sorted list of ranked faculty members, with filters and search queries applied. Used on the Faculty Leaderboard page.
+
+* **URL**: `/api/faculty/`
+* **Method**: `GET`
+* **Query Parameters**:
+  - `start_year` (int, optional)
+  - `end_year` (int, optional)
+  - `area` (comma-separated string, optional, e.g., `4601,4602,Access`)
+  - `search` (string, optional - filters by faculty name)
+* **Response Schema**:
+```json
+[
+  {
+    "id": 1,
+    "name": "Pankaj Jalote",
+    "score": 45.20,
+    "institution": {
+      "id": 1,
+      "name": "IIIT Delhi"
+    },
+    "institution_rank": 1
+  }
+]
 ```
 
 ---

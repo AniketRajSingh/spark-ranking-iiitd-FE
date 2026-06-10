@@ -16,10 +16,27 @@ export default class FilterWidget {
     if (!this.container) return;
 
     this.config = initialConfig;
+    this.showYearRange = this.config.showYearRange !== false;
+
+    // Inject custom styling fallback
+    if (!document.getElementById('filter-custom-styles')) {
+      const style = document.createElement('style');
+      style.id = 'filter-custom-styles';
+      style.textContent = `
+        .filter-active {
+          background-color: #f0fdfa !important;
+          border-color: #0d9488 !important;
+          color: #0f766e !important;
+        }
+      `;
+      document.head.appendChild(style);
+    }
+
     this.state = {
       areas: new Set(),
       startYear: this.config.startYear || 2015,
       endYear: this.config.endYear || new Date().getFullYear(),
+      isCollapsed: this.config.isCollapsed !== undefined ? this.config.isCollapsed : this.showYearRange,
     };
     this._debounceTimer = null;
 
@@ -31,16 +48,17 @@ export default class FilterWidget {
     const currentYear = new Date().getFullYear();
     const areasHTML = (this.config.areas || []).map(area => {
       const icon = AREA_ICONS[area.id] || AREA_ICONS.default;
-      const checked = this.state.areas.has(String(area.id)) ? 'checked' : '';
+      const isChecked = this.state.areas.has(String(area.id));
+      const checkedAttr = isChecked ? 'checked' : '';
+      const activeClass = isChecked ? 'filter-active' : '';
       return `
         <label class="inline-flex items-center gap-2 px-3 py-1.5 border border-gray-200 rounded-lg text-sm text-gray-700
-                       bg-white hover:border-teal-400 hover:text-teal-700 cursor-pointer transition-colors duration-150
-                       has-[:checked]:bg-teal-50 has-[:checked]:border-teal-500 has-[:checked]:text-teal-700">
+                       bg-white hover:border-teal-400 hover:text-teal-700 cursor-pointer transition-colors duration-150 ${activeClass}">
           <input
             type="checkbox"
             id="area-${area.id}"
             data-area="${area.id}"
-            ${checked}
+            ${checkedAttr}
             class="sr-only"
           >
           <span aria-hidden="true">${icon}</span>
@@ -48,54 +66,82 @@ export default class FilterWidget {
         </label>`;
     }).join('');
 
+    const isCollapsed = this.state.isCollapsed;
+
     this.container.innerHTML = `
-      <div class="card p-4 space-y-4">
-
-        <h2 class="text-base font-semibold text-gray-800">Filters</h2>
-
-        <!-- Area filter -->
-        <fieldset>
-          <legend class="text-sm font-medium text-gray-600 mb-2">Research Area</legend>
-          <div class="flex flex-wrap gap-2" role="group" aria-label="Research area filters">
-            ${areasHTML}
+      <div class="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm space-y-4">
+        
+        <!-- Top bar: Year range (always visible if enabled) and Expand / Apply buttons -->
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          
+          <!-- Year Inputs or Title -->
+          <div class="flex items-center gap-3">
+            ${this.showYearRange ? `
+              <span class="text-sm font-semibold text-gray-700">Year Range:</span>
+              <div class="flex items-center gap-2">
+                <input
+                  type="number" id="start-year"
+                  value="${this.state.startYear}"
+                  min="1990" max="${currentYear}"
+                  class="w-24 px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm text-center focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                  aria-label="Start year"
+                >
+                <span class="text-gray-400">—</span>
+                <input
+                  type="number" id="end-year"
+                  value="${this.state.endYear}"
+                  min="1990" max="${currentYear}"
+                  class="w-24 px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm text-center focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                  aria-label="End year"
+                >
+              </div>
+              <p id="year-error" class="text-xs text-red-500 hidden ml-2" role="alert"></p>
+            ` : `
+              <span class="text-sm font-bold text-gray-800">Filter Venues</span>
+            `}
           </div>
-          <button
-            id="toggle-all-areas"
-            class="mt-2 text-xs text-teal-600 hover:text-teal-800 hover:underline focus:outline-none focus:underline"
-            type="button"
-          >Select all areas</button>
-        </fieldset>
 
-        <hr class="border-gray-100">
-
-        <!-- Year filter -->
-        <fieldset>
-          <legend class="text-sm font-medium text-gray-600 mb-2">Publication Year Range</legend>
-          <div class="flex items-center gap-2">
-            <div class="flex-1">
-              <label for="start-year" class="text-xs text-gray-500 block mb-1">From</label>
-              <input
-                type="number" id="start-year"
-                value="${this.state.startYear}"
-                min="1990" max="${currentYear}"
-                class="w-full px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
-                aria-label="Start year"
-              >
-            </div>
-            <span class="text-gray-400 mt-4">—</span>
-            <div class="flex-1">
-              <label for="end-year" class="text-xs text-gray-500 block mb-1">To</label>
-              <input
-                type="number" id="end-year"
-                value="${this.state.endYear}"
-                min="1990" max="${currentYear}"
-                class="w-full px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
-                aria-label="End year"
-              >
-            </div>
+          <!-- Buttons -->
+          <div class="flex items-center gap-2 self-end md:self-auto">
+            <button
+              id="btn-toggle-filters"
+              class="px-3.5 py-1.5 text-sm font-medium border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-1.5"
+              type="button"
+            >
+              <span>⚙️ Research Areas</span>
+              <svg id="chevron-icon" class="w-4 h-4 transition-transform duration-200 ${isCollapsed ? '' : 'rotate-180'}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+              </svg>
+            </button>
+            <button
+              id="btn-apply-filters"
+              class="px-4 py-1.5 text-sm font-semibold text-white bg-teal-600 hover:bg-teal-700 rounded-lg shadow-sm hover:shadow transition-all"
+              type="button"
+            >
+              Apply Filters
+            </button>
           </div>
-          <p id="year-error" class="mt-1 text-xs text-red-500 hidden" role="alert"></p>
-        </fieldset>
+
+        </div>
+
+        <!-- Collapsible Content: Research Areas -->
+        <div id="collapsible-filters" class="${isCollapsed ? 'hidden' : ''} pt-4 border-t border-gray-100 space-y-3">
+          <fieldset>
+            <div class="flex items-center justify-between mb-2">
+              <legend class="text-xs font-bold text-gray-500 uppercase tracking-wider">Filter by Research Area</legend>
+              <button
+                id="toggle-all-areas"
+                class="text-xs font-semibold text-teal-600 hover:text-teal-800 focus:outline-none"
+                type="button"
+              >
+                ${this.state.areas.size === this.config.areas.length ? 'Deselect all' : 'Select all'}
+              </button>
+            </div>
+            <div class="flex flex-wrap gap-2" role="group" aria-label="Research area filters">
+              ${areasHTML}
+            </div>
+          </fieldset>
+        </div>
 
       </div>
     `;
@@ -105,22 +151,17 @@ export default class FilterWidget {
     document.dispatchEvent(new CustomEvent('filtersChanged', { detail: this.getState() }));
   }
 
-  _debounce(fn, ms = 250) {
-    clearTimeout(this._debounceTimer);
-    this._debounceTimer = setTimeout(fn, ms);
-  }
-
   _validateYears(startVal, endVal) {
     const errorEl = this.container.querySelector('#year-error');
     const currentYear = new Date().getFullYear();
     if (!errorEl) return true;
     if (startVal && endVal && startVal > endVal) {
-      errorEl.textContent = '"From" year cannot be after "To" year.';
+      errorEl.textContent = 'Invalid range.';
       errorEl.classList.remove('hidden');
       return false;
     }
     if ((startVal && startVal > currentYear) || (endVal && endVal > currentYear)) {
-      errorEl.textContent = `Year cannot exceed ${currentYear}.`;
+      errorEl.textContent = `Max ${currentYear}.`;
       errorEl.classList.remove('hidden');
       return false;
     }
@@ -130,52 +171,89 @@ export default class FilterWidget {
   }
 
   _attachListeners() {
-    // Area checkboxes — live filter on change
-    this.container.addEventListener('change', e => {
-      if (e.target.type === 'checkbox') {
-        const code = e.target.dataset.area;
-        if (e.target.checked) {
-          this.state.areas.add(String(code));
-        } else {
-          this.state.areas.delete(String(code));
+    // Area checkboxes — live update state and visual checks, no dispatch
+    const collapsible = this.container.querySelector('#collapsible-filters');
+    if (collapsible) {
+      collapsible.addEventListener('change', e => {
+        if (e.target.type === 'checkbox') {
+          const code = e.target.dataset.area;
+          const label = e.target.closest('label');
+          if (e.target.checked) {
+            this.state.areas.add(String(code));
+            if (label) label.classList.add('filter-active');
+          } else {
+            this.state.areas.delete(String(code));
+            if (label) label.classList.remove('filter-active');
+          }
         }
-        this._debounce(() => this._dispatch());
-      }
-    });
+      });
+    }
 
-    // Year inputs — live filter with validation
-    const onYearChange = () => {
-      const startInput = this.container.querySelector('#start-year');
-      const endInput = this.container.querySelector('#end-year');
-      if (!startInput || !endInput) return;
-      const sy = parseInt(startInput.value, 10);
-      const ey = parseInt(endInput.value, 10);
-      if (!this._validateYears(sy, ey)) return;
-      this.state.startYear = isNaN(sy) ? null : sy;
-      this.state.endYear = isNaN(ey) ? null : ey;
-      this._debounce(() => this._dispatch(), 400);
-    };
-
-    const startYrEl = this.container.querySelector('#start-year');
-    const endYrEl = this.container.querySelector('#end-year');
-    if (startYrEl) startYrEl.addEventListener('input', onYearChange);
-    if (endYrEl) endYrEl.addEventListener('input', onYearChange);
-
-    // Toggle all areas
-    const toggleBtn = this.container.querySelector('#toggle-all-areas');
-    if (toggleBtn) {
+    // Toggle collapse button
+    const toggleBtn = this.container.querySelector('#btn-toggle-filters');
+    const chevronIcon = this.container.querySelector('#chevron-icon');
+    if (toggleBtn && collapsible) {
       toggleBtn.addEventListener('click', () => {
+        const collapsed = collapsible.classList.toggle('hidden');
+        this.state.isCollapsed = collapsed;
+        if (chevronIcon) {
+          if (collapsed) {
+            chevronIcon.classList.remove('rotate-180');
+          } else {
+            chevronIcon.classList.add('rotate-180');
+          }
+        }
+      });
+    }
+
+    // Select/deselect all areas
+    const toggleAllBtn = this.container.querySelector('#toggle-all-areas');
+    if (toggleAllBtn) {
+      toggleAllBtn.addEventListener('click', () => {
         const allChecked = this.state.areas.size === this.config.areas.length;
         if (allChecked) {
           this.state.areas.clear();
-          toggleBtn.textContent = 'Select all areas';
         } else {
           this.config.areas.forEach(a => this.state.areas.add(String(a.id)));
-          toggleBtn.textContent = 'Deselect all areas';
         }
-        // Re-render to update checkbox states
+        // Re-render to update checkbox states visually
         this.render();
         this._attachListeners();
+      });
+    }
+
+    // Year inputs — validate on input but do not dispatch
+    if (this.showYearRange) {
+      const onYearInput = () => {
+        const startInput = this.container.querySelector('#start-year');
+        const endInput = this.container.querySelector('#end-year');
+        if (!startInput || !endInput) return;
+        const sy = parseInt(startInput.value, 10);
+        const ey = parseInt(endInput.value, 10);
+        this._validateYears(sy, ey);
+      };
+
+      const startYrEl = this.container.querySelector('#start-year');
+      const endYrEl = this.container.querySelector('#end-year');
+      if (startYrEl) startYrEl.addEventListener('input', onYearInput);
+      if (endYrEl) endYrEl.addEventListener('input', onYearInput);
+    }
+
+    // Apply button
+    const applyBtn = this.container.querySelector('#btn-apply-filters');
+    if (applyBtn) {
+      applyBtn.addEventListener('click', () => {
+        if (this.showYearRange) {
+          const startInput = this.container.querySelector('#start-year');
+          const endInput = this.container.querySelector('#end-year');
+          if (startInput && endInput) {
+            const sy = parseInt(startInput.value, 10);
+            const ey = parseInt(endInput.value, 10);
+            if (!this._validateYears(sy, ey)) return;
+            this.state.startYear = isNaN(sy) ? null : sy;
+            this.state.endYear = isNaN(ey) ? null : ey;
+          }
+        }
         this._dispatch();
       });
     }

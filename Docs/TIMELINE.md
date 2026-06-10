@@ -31,6 +31,12 @@ This document tracks all design modifications, architectural shifts, and develop
     - Integrated standard SEO metadata blocks, descriptive page titles, and favicon anchors across all pages.
     - Styled the homepage search input in `index.html` with premium Tailwind CSS utility classes to avoid overlaps with the search and clear icons.
     - Injected dynamic responsive CSS utilities (`sm:hidden`, `sm:flex`, `sm:block`, etc.) within `navbar.js` to ensure the mobile dropdown toggle menu and desktop navigation layout display correctly across all viewports, overcoming compiled Tailwind CSS purge omissions.
+    - Moved the filter panel from the right sidebar to a horizontal, collapsible layout at the top of all pages (`index.html`, `faculty.html`, `conference.html`), expanding the list cards to full width.
+    - Redesigned the filter panel to display only the Publication Year Range by default, adding a toggle to expand/collapse Research Areas, and an "Apply Filters" button to execute updates.
+    - Handled checkbox visual active states by toggling custom `.filter-active` classes in JS and injecting the required styles dynamically, bypasssing purged tailwind class bugs.
+    - Switched the Faculty rankings page to fetch from `/api/faculty/` directly instead of nested institution ranking records, resolving display restrictions to show the full list of faculty members and their true leaderboard rankings.
+    - Added a search input bar to the Faculty leaderboard (`faculty.html`) to allow searching faculty members by name via a debounced API query.
+    - Mapped nested Django `authorships` to publications in `FacultyProfile.js` to fix the empty publications lists and zero paper counts on the faculty profile page.
   - **New Features & Pages**:
     - Created static About page (`about.html`).
     - Created Conferences directory (`conference.html` and `ConferenceList.js` widget) to list CORE A*/A venues with area-wise category filter bindings.
@@ -39,6 +45,7 @@ This document tracks all design modifications, architectural shifts, and develop
     - Implemented a clean, client-side pagination controller for publication tables on the institution profile page.
   - **Data Integration & Contracts**:
     - Developed `requirements_for_BE.txt` to serve as a specifications contract for backend developers.
+    - Updated `requirements_for_BE.txt` to formally specify the new direct `/api/faculty/` leaderboard/search API endpoints and document support for Django through-model `authorships` nested schema mapping.
     - Normalized the naming conventions, renaming all occurrences of "ICSRank" to "SPARK" universally.
 
 ### 2026-06-10

@@ -26,18 +26,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   const groupedAreas = await loadGroupedAreas();
 
-  // Hide publication years filter block on filter widget for conferences
+  // Initialize filter widget for conferences (hide years, expand research areas by default)
   const filterWidget = new FilterWidget('filter-panel', {
     areas: groupedAreas,
+    showYearRange: false,
   });
-
-  // Since FilterWidget includes year fields by default, let's hide the year fieldset on the conferences page
-  const yearFieldset = document.querySelector('#filter-panel fieldset:nth-of-type(2)');
-  if (yearFieldset) {
-    yearFieldset.style.display = 'none';
-    const hr = yearFieldset.previousElementSibling;
-    if (hr && hr.tagName === 'HR') hr.style.display = 'none';
-  }
 
   const conferenceListWidget = new ConferenceListWidget('conference-list');
 

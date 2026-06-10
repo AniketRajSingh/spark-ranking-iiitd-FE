@@ -57,8 +57,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     renderSkeleton(listContainer);
     try {
       const params = buildFilterParams(filters, groupedAreas);
-      const serverData = await fetchJSON(`${apiBase}/rankings/?${params}`);
-      if (!serverData) throw new Error('Failed to load rankings data');
+      const serverData = await fetchJSON(`${apiBase}/faculty/?${params}`);
+      if (!serverData) throw new Error('Failed to load faculty rankings data');
       
       if (facultyList) {
         facultyList.serverTopData = serverData;
@@ -78,4 +78,51 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   document.addEventListener('filtersChanged', e => fetchAndRender(e.detail));
   fetchAndRender(filterWidget.getState());
+
+  // ── Search bar ────────────────────────────────────────────────────────
+  const searchInput   = document.getElementById('search-input');
+  const searchClear   = document.getElementById('search-clear');
+  const searchWrapper = document.getElementById('search-wrapper');
+  let searchDebounce  = null;
+  let isSearchMode    = false;
+
+  const doSearch = async (q) => {
+    if (!q.trim()) {
+      isSearchMode = false;
+      if (searchWrapper) searchWrapper.classList.remove('has-value');
+      fetchAndRender(filterWidget.getState());
+      return;
+    }
+    isSearchMode = true;
+    if (searchWrapper) searchWrapper.classList.add('has-value');
+    renderSkeleton(listContainer);
+    try {
+      const serverData = await fetchJSON(`${apiBase}/faculty/?search=${encodeURIComponent(q.trim())}`);
+      if (!serverData) throw new Error('Search failed');
+      
+      if (facultyList) {
+        facultyList.serverTopData = serverData;
+        facultyList.render();
+      } else {
+        facultyList = new FacultyListWidget('faculty-listing', filterWidget.getState(), serverData);
+      }
+    } catch (e) {
+      renderErrorCard(listContainer, 'Search failed. Try again.', () => doSearch(q));
+    }
+  };
+
+  if (searchInput) {
+    searchInput.addEventListener('input', e => {
+      clearTimeout(searchDebounce);
+      searchDebounce = setTimeout(() => doSearch(e.target.value), 300);
+    });
+  }
+  if (searchClear) {
+    searchClear.addEventListener('click', () => {
+      if (searchInput) searchInput.value = '';
+      if (searchWrapper) searchWrapper.classList.remove('has-value');
+      isSearchMode = false;
+      fetchAndRender(filterWidget.getState());
+    });
+  }
 });

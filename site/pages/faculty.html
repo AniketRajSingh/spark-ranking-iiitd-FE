@@ -13,6 +13,9 @@
   <style>
     body { font-family: 'Inter', ui-sans-serif, system-ui, sans-serif; }
     .hero-gradient { background: linear-gradient(135deg, #f0fdfa 0%, #e0f2fe 50%, #f0fdf4 100%); }
+    .search-clear { display: none; }
+    .search-wrapper:focus-within .search-clear,
+    .search-wrapper.has-value .search-clear { display: flex; }
   </style>
 </head>
 <body class="bg-gray-50 text-gray-900 antialiased">
@@ -32,29 +35,52 @@
   </section>
 
   <!-- Main Grid -->
-  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-    <div class="flex flex-col lg:flex-row gap-6">
-      
-      <!-- Faculty List (Left) -->
-      <div class="flex-1 min-w-0">
-        <div class="card p-0 overflow-hidden">
-          <div class="flex items-center justify-between px-5 py-4 border-b border-gray-100 bg-white">
-            <h2 class="text-base font-semibold text-gray-800">Faculty Leaderboard</h2>
-          </div>
-          <div id="faculty-listing" aria-busy="true" aria-live="polite" class="bg-white">
-            <!-- FacultyListWidget renders here -->
-          </div>
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+    
+    <!-- Top Filter Panel -->
+    <div id="filter-panel">
+      <!-- FilterWidget renders here -->
+    </div>
+
+    <!-- Search bar for faculties -->
+    <div class="relative search-wrapper" id="search-wrapper">
+      <div class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+        <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z"/>
+        </svg>
+      </div>
+      <input
+        id="search-input"
+        type="search"
+        placeholder="Search faculty by name…"
+        class="w-full pl-10 pr-10 py-2.5 border border-gray-200 rounded-lg text-sm bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 transition-all shadow-sm"
+        aria-label="Search faculty"
+        autocomplete="off"
+      />
+      <button
+        id="search-clear"
+        class="search-clear absolute inset-y-0 right-0 items-center pr-3 text-gray-400 hover:text-gray-600"
+        aria-label="Clear search"
+        type="button"
+      >
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+        </svg>
+      </button>
+    </div>
+
+    <!-- Faculty List -->
+    <div class="w-full">
+      <div class="card p-0 overflow-hidden bg-white">
+        <div class="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+          <h2 class="text-base font-semibold text-gray-800">Faculty Leaderboard</h2>
+        </div>
+        <div id="faculty-listing" aria-busy="true" aria-live="polite" class="bg-white">
+          <!-- FacultyListWidget renders here -->
         </div>
       </div>
-
-      <!-- Filters (Right) -->
-      <aside class="w-full lg:w-72 xl:w-80 flex-shrink-0">
-        <div id="filter-panel">
-          <!-- FilterWidget renders here -->
-        </div>
-      </aside>
-
     </div>
+
   </main>
 
   <!-- Footer -->

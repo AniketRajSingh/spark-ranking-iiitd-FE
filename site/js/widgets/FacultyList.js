@@ -23,7 +23,20 @@ export default class FacultyListWidget {
 
     let flat = [];
 
-    if (this.serverTopData && Array.isArray(this.serverTopData.institutions) && this.serverTopData.institutions.length) {
+    let rawList = [];
+    let isLegacyLoop = false;
+
+    if (Array.isArray(this.serverTopData)) {
+      rawList = this.serverTopData;
+    } else if (this.serverTopData && Array.isArray(this.serverTopData.results)) {
+      rawList = this.serverTopData.results;
+    } else if (this.serverTopData && Array.isArray(this.serverTopData.faculty)) {
+      rawList = this.serverTopData.faculty;
+    } else if (this.serverTopData && Array.isArray(this.serverTopData.institutions) && this.serverTopData.institutions.length) {
+      isLegacyLoop = true;
+    }
+
+    if (isLegacyLoop) {
       this.serverTopData.institutions.forEach(inst => {
         const instObj  = inst.institution || inst;
         const instRank = inst.rank || null;
@@ -37,17 +50,20 @@ export default class FacultyListWidget {
           });
         });
       });
-    } else if (this.serverTopData && Array.isArray(this.serverTopData.results)) {
-      // Flat list fallback
-      flat = this.serverTopData.results.map(f => ({
-        id:    f.id,
-        name:  f.name || f.faculty_name || '',
-        score: f.score || 0,
-        institution: typeof f.institution === 'object'
+    } else if (rawList && rawList.length) {
+      flat = rawList.map(f => {
+        const instObj = (typeof f.institution === 'object' && f.institution !== null)
           ? f.institution
-          : { id: f.institution_id || '', name: f.institution || '' },
-        instRank: null,
-      }));
+          : { id: f.institution_id || '', name: f.institution || '' };
+        const instRank = f.institution_rank || f.institution?.rank || f.inst_rank || null;
+        return {
+          id:           f.id,
+          name:         f.name || f.faculty_name || '',
+          score:        f.score || 0,
+          institution:  instObj,
+          instRank,
+        };
+      });
     } else {
       container.innerHTML = `
         <div class="flex flex-col items-center gap-3 py-12 text-center text-gray-400">
