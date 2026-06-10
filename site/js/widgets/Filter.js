@@ -1,4 +1,14 @@
-// site/js/widgets/Filter.js
+// widgets/Filter.js — SPARK Filter Panel
+// Features: live filtering (debounced), year validation, area icons,
+// "All Areas" toggle, ARIA fieldset grouping.
+
+const AREA_ICONS = {
+  ai:       '🤖', ml:       '🧠', nlp:      '💬',
+  vision:   '👁️', systems:  '⚙️', theory:   '📐',
+  security: '🔒', networks: '🌐', graphics: '🎨',
+  hci:      '🖱️', robotics: '🦾', db:       '🗄️',
+  default:  '📚',
+};
 
 class FilterWidget {
   constructor(containerId, initialConfig) {
@@ -6,64 +16,174 @@ class FilterWidget {
     if (!this.container) return;
 
     this.config = initialConfig;
-    // Default: no area filters selected unless user chooses
     this.state = {
       areas: new Set(),
-      startYear: this.config.startYear || null,
-      endYear: this.config.endYear || null,
+      startYear: this.config.startYear || 2015,
+      endYear: this.config.endYear || new Date().getFullYear(),
     };
+    this._debounceTimer = null;
 
     this.render();
-    this.addEventListeners();
+    this._attachListeners();
   }
 
   render() {
-    const areasHTML = this.config.areas.map(area => `
-      <label class="inline-flex items-center gap-2 px-2 py-1 border rounded text-sm text-gray-700 bg-gray-50">
-        <input type="checkbox" id="area-${area.id}" data-area="${area.id}" data-area-code="${area.code || ''}" ${this.state.areas.has(area.code || area.id) ? 'checked' : ''} class="form-checkbox h-4 w-4 text-teal-600">
-        <span>${area.name}</span>
-      </label>
-    `).join('');
+    const currentYear = new Date().getFullYear();
+    const areasHTML = (this.config.areas || []).map(area => {
+      const icon = AREA_ICONS[area.id] || AREA_ICONS.default;
+      const checked = this.state.areas.has(String(area.code || area.id)) ? 'checked' : '';
+      return `
+        <label class="inline-flex items-center gap-2 px-3 py-1.5 border border-gray-200 rounded-lg text-sm text-gray-700
+                       bg-white hover:border-teal-400 hover:text-teal-700 cursor-pointer transition-colors duration-150
+                       has-[:checked]:bg-teal-50 has-[:checked]:border-teal-500 has-[:checked]:text-teal-700">
+          <input
+            type="checkbox"
+            id="area-${area.id}"
+            data-area="${area.id}"
+            data-area-code="${area.code || ''}"
+            ${checked}
+            class="sr-only"
+          >
+          <span aria-hidden="true">${icon}</span>
+          <span>${area.name}</span>
+        </label>`;
+    }).join('');
 
-    const html = `
-      <div class="bg-white shadow rounded p-4">
-        <h4 class="text-lg font-semibold text-gray-800 mb-3">Filter by Research Area</h4>
-        <div class="flex flex-wrap gap-2 mb-4">${areasHTML}</div>
-        <hr class="my-3">
-        <h4 class="text-lg font-semibold text-gray-800 mb-2">Filter by Year</h4>
-        <div class="flex items-center gap-2 mb-3">
-          <label for="start-year" class="text-sm text-gray-600">From</label>
-          <input type="number" id="start-year" value="${this.state.startYear || ''}" placeholder="e.g. 2018" class="border rounded px-2 py-1 w-20">
-          <label for="end-year" class="text-sm text-gray-600">To</label>
-          <input type="number" id="end-year" value="${this.state.endYear || ''}" placeholder="e.g. 2023" class="border rounded px-2 py-1 w-20">
-        </div>
-        <button id="update-filters" class="w-full bg-teal-500 hover:bg-teal-600 text-white py-2 rounded">Update</button>
+    this.container.innerHTML = `
+      <div class="card p-4 space-y-4">
+
+        <h2 class="text-base font-semibold text-gray-800">Filters</h2>
+
+        <!-- Area filter -->
+        <fieldset>
+          <legend class="text-sm font-medium text-gray-600 mb-2">Research Area</legend>
+          <div class="flex flex-wrap gap-2" role="group" aria-label="Research area filters">
+            ${areasHTML}
+          </div>
+          <button
+            id="toggle-all-areas"
+            class="mt-2 text-xs text-teal-600 hover:text-teal-800 hover:underline focus:outline-none focus:underline"
+            type="button"
+          >Select all areas</button>
+        </fieldset>
+
+        <hr class="border-gray-100">
+
+        <!-- Year filter -->
+        <fieldset>
+          <legend class="text-sm font-medium text-gray-600 mb-2">Publication Year Range</legend>
+          <div class="flex items-center gap-2">
+            <div class="flex-1">
+              <label for="start-year" class="text-xs text-gray-500 block mb-1">From</label>
+              <input
+                type="number" id="start-year"
+                value="${this.state.startYear}"
+                min="1990" max="${currentYear}"
+                class="w-full px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                aria-label="Start year"
+              >
+            </div>
+            <span class="text-gray-400 mt-4">—</span>
+            <div class="flex-1">
+              <label for="end-year" class="text-xs text-gray-500 block mb-1">To</label>
+              <input
+                type="number" id="end-year"
+                value="${this.state.endYear}"
+                min="1990" max="${currentYear}"
+                class="w-full px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                aria-label="End year"
+              >
+            </div>
+          </div>
+          <p id="year-error" class="mt-1 text-xs text-red-500 hidden" role="alert"></p>
+        </fieldset>
+
       </div>
     `;
-    this.container.innerHTML = html;
   }
 
-  addEventListeners() {
-    this.container.querySelector('#update-filters').addEventListener('click', () => {
-      // Update state from UI
-      this.state.areas.clear();
-      this.container.querySelectorAll('input[type="checkbox"]:checked').forEach(cb => {
-        // prefer an explicit area code if provided, otherwise use the id
-        const code = cb.dataset.areaCode && cb.dataset.areaCode.length ? cb.dataset.areaCode : cb.dataset.area;
-        this.state.areas.add(code);
-      });
-  const sy = this.container.querySelector('#start-year').value;
-  const ey = this.container.querySelector('#end-year').value;
-  this.state.startYear = sy && sy.length ? parseInt(sy, 10) : null;
-  this.state.endYear = ey && ey.length ? parseInt(ey, 10) : null;
+  _dispatch() {
+    document.dispatchEvent(new CustomEvent('filtersChanged', { detail: this.getState() }));
+  }
 
-      // Dispatch a custom event that other widgets can listen to
-      const event = new CustomEvent('filtersChanged', { detail: this.getState() });
-      document.dispatchEvent(event);
+  _debounce(fn, ms = 250) {
+    clearTimeout(this._debounceTimer);
+    this._debounceTimer = setTimeout(fn, ms);
+  }
+
+  _validateYears(startVal, endVal) {
+    const errorEl = this.container.querySelector('#year-error');
+    const currentYear = new Date().getFullYear();
+    if (!errorEl) return true;
+    if (startVal && endVal && startVal > endVal) {
+      errorEl.textContent = '"From" year cannot be after "To" year.';
+      errorEl.classList.remove('hidden');
+      return false;
+    }
+    if ((startVal && startVal > currentYear) || (endVal && endVal > currentYear)) {
+      errorEl.textContent = `Year cannot exceed ${currentYear}.`;
+      errorEl.classList.remove('hidden');
+      return false;
+    }
+    errorEl.classList.add('hidden');
+    errorEl.textContent = '';
+    return true;
+  }
+
+  _attachListeners() {
+    // Area checkboxes — live filter on change
+    this.container.addEventListener('change', e => {
+      if (e.target.type === 'checkbox') {
+        const code = e.target.dataset.areaCode || e.target.dataset.area;
+        if (e.target.checked) {
+          this.state.areas.add(String(code));
+        } else {
+          this.state.areas.delete(String(code));
+        }
+        this._debounce(() => this._dispatch());
+      }
     });
+
+    // Year inputs — live filter with validation
+    const onYearChange = () => {
+      const startInput = this.container.querySelector('#start-year');
+      const endInput = this.container.querySelector('#end-year');
+      const sy = parseInt(startInput.value, 10);
+      const ey = parseInt(endInput.value, 10);
+      if (!this._validateYears(sy, ey)) return;
+      this.state.startYear = isNaN(sy) ? null : sy;
+      this.state.endYear = isNaN(ey) ? null : ey;
+      this._debounce(() => this._dispatch(), 400);
+    };
+
+    this.container.querySelector('#start-year').addEventListener('input', onYearChange);
+    this.container.querySelector('#end-year').addEventListener('input', onYearChange);
+
+    // Toggle all areas
+    const toggleBtn = this.container.querySelector('#toggle-all-areas');
+    if (toggleBtn) {
+      toggleBtn.addEventListener('click', () => {
+        const allChecked = this.state.areas.size === this.config.areas.length;
+        if (allChecked) {
+          this.state.areas.clear();
+          toggleBtn.textContent = 'Select all areas';
+        } else {
+          this.config.areas.forEach(a => this.state.areas.add(String(a.code || a.id)));
+          toggleBtn.textContent = 'Deselect all areas';
+        }
+        // Re-render to update checkbox states
+        this.render();
+        this._attachListeners();
+        this._dispatch();
+      });
+    }
   }
 
   getState() {
-    return this.state;
+    return {
+      areas: new Set(this.state.areas),
+      startYear: this.state.startYear,
+      endYear: this.state.endYear,
+    };
   }
 }

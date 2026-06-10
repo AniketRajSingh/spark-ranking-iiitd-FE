@@ -1,0 +1,13 @@
+# ─── Environment (never commit real values) ───────────
+.env
+site/env.js
+
+# ─── OS / Editor ──────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo

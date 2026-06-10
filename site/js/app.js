@@ -29,8 +29,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   // Global API configuration used across pages
-  const apiBase = (window.API_CONFIG && window.API_CONFIG.API_BASE) ? window.API_CONFIG.API_BASE : null;
-  const probeTimeout = (window.API_CONFIG && window.API_CONFIG.PROBE_TIMEOUT) ? window.API_CONFIG.PROBE_TIMEOUT : 1500;
+  const apiBase = (window.SPARK_CONFIG && window.SPARK_CONFIG.API_BASE) ? window.SPARK_CONFIG.API_BASE : null;
+  const probeTimeout = 1500;
 
   // Home page logic
   if (document.getElementById('ranking-table')) {
@@ -85,7 +85,21 @@ document.addEventListener('DOMContentLoaded', async () => {
           return;
         }
         const payload = await res.json();
-        const newRankings = (payload.institutions || []).map(i => ({ rank: i.rank, institution: i.institution, score: i.score }));
+
+        // Normalize: API may return a flat array OR {institutions:[]} OR {results:[]}
+        const rawList = Array.isArray(payload)
+          ? payload
+          : (payload.institutions || payload.results || []);
+
+        const newRankings = rawList.map(i => ({
+          rank: i.rank,
+          // Normalize institution to always be {id, name} — API may return a string or object
+          institution: (typeof i.institution === 'object' && i.institution !== null)
+            ? i.institution
+            : { id: i.institution_id || i.id || '', name: i.institution || i.name || '' },
+          score: i.score,
+        }));
+
         rankingTableWidget.setData(newRankings);
       } catch (e) {
         console.error('Error fetching /api/rankings/:', e);
