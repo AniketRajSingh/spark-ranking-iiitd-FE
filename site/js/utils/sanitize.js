@@ -7,7 +7,7 @@
  * @param {unknown} value
  * @returns {string}
  */
-function escapeHTML(value) {
+export function escapeHTML(value) {
   if (value === null || value === undefined) return '';
   const str = String(value);
   return str

@@ -1,37 +1,54 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>ICSRank — Institution</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  </head>
-  <body>
-    <div id="navbar-placeholder"></div>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SPARK — Institution Profile</title>
+  <meta name="description" content="Detailed publications breakdown, academic ranking trends, and top faculty of the selected institution." />
+  <link rel="icon" href="../logo.png" type="image/png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="../css/tailwind.css" />
+  <style>
+    body { font-family: 'Inter', ui-sans-serif, system-ui, sans-serif; }
+    .hero-gradient { background: linear-gradient(135deg, #f0fdfa 0%, #e0f2fe 50%, #f0fdf4 100%); }
+  </style>
+</head>
+<body class="bg-gray-50 text-gray-900 antialiased">
 
-    <main class="max-w-6xl mx-auto px-4 py-6 institution-profile">
-      <section class="bg-white shadow rounded p-6 mb-6">
-        <h2 id="inst-name" class="text-2xl font-semibold text-gray-900"></h2>
-        <p class="mt-2">Website: <a id="inst-website" href="#" target="_blank" rel="noopener noreferrer" class="text-teal-600"></a></p>
-        <p id="inst-summary" class="mt-4 text-gray-700">Overview and quick stats will appear here.</p>
-      </section>
+  <div id="navbar-placeholder"></div>
 
-      <section class="bg-white shadow rounded p-6">
-        <h3 class="text-lg font-semibold mb-3">Top Faculty</h3>
-        <ul id="top-faculty" class="space-y-2"></ul>
-      </section>
-    </main>
+  <!-- Main Container -->
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 institution-profile">
+    <!-- InstitutionProfileWidget renders here dynamically -->
+  </main>
 
-    <footer class="max-w-6xl mx-auto px-4 py-6 text-gray-600 text-sm">
-      <p>© ICSRank</p>
-    </footer>
-  <script src="/site/js/navbar.js"></script>
-  <script src="/site/env.js"></script>
-  <script src="/site/js/config.js"></script>
-  <script src="/site/js/utils/sanitize.js"></script>
-  <script src="/site/js/utils/errorCard.js"></script>
-  <script src="/site/js/utils/fetchJSON.js"></script>
-  <script src="/site/js/widgets/InstitutionProfile.js"></script>
-  <script src="/site/js/app.js"></script>
-  </body>
+  <!-- Footer -->
+  <footer class="border-t border-gray-100 mt-8">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex flex-col sm:flex-row items-center justify-between gap-3">
+      <p class="text-sm text-gray-400">
+        © <span id="footer-year"></span> SPARK — Scholarly Publication & Academic Ranking Knowledgebase
+      </p>
+      <div class="flex items-center gap-4 text-sm text-gray-400">
+        <a href="./methodology.html" class="hover:text-teal-600 transition-colors">Methodology</a>
+        <a href="./about.html" class="hover:text-teal-600 transition-colors">About</a>
+        <a href="https://github.com" target="_blank" rel="noopener noreferrer" class="hover:text-teal-600 transition-colors">GitHub</a>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <!-- Scripts -->
+  <script src="../js/navbar.js"></script>
+  <script src="../env.js"></script>
+  <script src="../js/config.js"></script>
+  <script type="module" src="../js/pages/institution.js"></script>
+
+  <script>
+    document.getElementById('footer-year').textContent = new Date().getFullYear();
+  </script>
+</body>
 </html>

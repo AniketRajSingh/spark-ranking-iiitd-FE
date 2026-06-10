@@ -2,7 +2,10 @@
 // Features: sort indicators (▲/▼), rank medals (top 3), accessible rows
 //           (tabindex + keyboard nav), XSS-safe rendering via escapeHTML.
 
-class RankingTableWidget {
+import { escapeHTML } from '../utils/sanitize.js';
+import { clearBusy } from '../utils/errorCard.js';
+
+export default class RankingTableWidget {
   constructor(containerId) {
     this.container = document.getElementById(containerId);
     this.sortBy = 'rank';
@@ -47,10 +50,10 @@ class RankingTableWidget {
   }
 
   _rankBadge(rank) {
-    if (rank === 1) return `<span class="rank-badge rank-1" title="Rank 1" aria-label="Rank 1">1</span>`;
-    if (rank === 2) return `<span class="rank-badge rank-2" title="Rank 2" aria-label="Rank 2">2</span>`;
-    if (rank === 3) return `<span class="rank-badge rank-3" title="Rank 3" aria-label="Rank 3">3</span>`;
-    return `<span class="text-sm text-gray-600">${escapeHTML(rank)}</span>`;
+    if (rank === 1) return `<span class="rank-badge rank-1" title="Rank 1" aria-label="Rank 1">🥇</span>`;
+    if (rank === 2) return `<span class="rank-badge rank-2" title="Rank 2" aria-label="Rank 2">🥈</span>`;
+    if (rank === 3) return `<span class="rank-badge rank-3" title="Rank 3" aria-label="Rank 3">🥉</span>`;
+    return `<span class="text-sm font-semibold text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">${escapeHTML(rank)}</span>`;
   }
 
   _ariaSortAttr(col) {
@@ -78,19 +81,21 @@ class RankingTableWidget {
       const instName = escapeHTML(r.institution?.name || r.institution || '');
       const instId   = escapeHTML(r.institution?.id   || '');
       const score    = escapeHTML(r.score);
-      const href     = `/site/pages/institution.html?id=${instId}`;
+      const isSubpage = window.location.pathname.includes('/pages/');
+      const prefix = isSubpage ? '../' : './';
+      const href     = `${prefix}pages/institution.html?id=${instId}`;
 
       return `
         <tr
-          class="clickable-row hover:bg-teal-50 transition-colors duration-100 cursor-pointer focus:outline-none"
+          class="clickable-row hover:bg-teal-50/50 transition-colors duration-100 cursor-pointer focus:outline-none"
           data-href="${href}"
           tabindex="0"
           role="row"
           aria-label="${instName}, rank ${escapeHTML(r.rank)}, score ${score}"
         >
-          <td class="px-4 py-3 text-sm">${this._rankBadge(r.rank)}</td>
-          <td class="px-4 py-3 text-sm font-medium text-gray-900">${instName}</td>
-          <td class="px-4 py-3 text-sm text-gray-600 tabular-nums">${score}</td>
+          <td class="px-4 py-3.5 text-sm">${this._rankBadge(r.rank)}</td>
+          <td class="px-4 py-3.5 text-sm font-semibold text-gray-800 hover:text-teal-600 transition-colors">${instName}</td>
+          <td class="px-4 py-3.5 text-sm text-gray-600 font-mono font-medium">${score}</td>
         </tr>`;
     }).join('');
 
@@ -130,7 +135,6 @@ class RankingTableWidget {
   }
 
   _attachListeners() {
-    // Column sort buttons
     this.container.querySelectorAll('.sort-btn').forEach(btn => {
       btn.addEventListener('click', e => {
         e.preventDefault();
@@ -141,12 +145,10 @@ class RankingTableWidget {
       });
     });
 
-    // Clickable rows — mouse click
     this.container.querySelectorAll('.clickable-row').forEach(row => {
       row.addEventListener('click', () => {
         window.location.href = row.dataset.href;
       });
-      // Keyboard: Enter or Space navigates
       row.addEventListener('keydown', e => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();

@@ -1,0 +1,217 @@
+# SPARK Backend API Requirements (Frontend Overhaul Specifications)
+
+The refactored static frontend connects to a Django/REST backend using the following endpoints. 
+
+All endpoints must be CORS-enabled and return JSON payloads.
+
+---
+
+### 1. General Stats Endpoint
+Returns cumulative counts shown in the homepage hero counters.
+
+* **URL**: `/api/stats/`
+* **Method**: `GET`
+* **Response Schema**:
+```json
+{
+  "institutions": 42,
+  "faculty": 1280,
+  "publications": 15403
+}
+```
+*Note: The frontend also fallback-checks keys: "institution_count", "faculty_count", "publication_count".*
+
+---
+
+### 2. Research Areas Listing
+Fetches all raw Field of Research (FoR) codes and Journal abbreviations.
+
+* **URL**: `/api/areas/`
+* **Method**: `GET`
+* **Response Schema**:
+```json
+[
+  { "id": "ai", "code": "4602", "name": "Artificial Intelligence" },
+  { "id": "vision", "code": "4603", "name": "Computer Vision & Multimedia" },
+  { "id": "systems", "code": "4606", "name": "Distributed Computing" }
+]
+```
+
+---
+
+### 3. Institution Rankings Table
+Returns the sorted list of ranked institutions, with filters applied. Used on the index page and faculty listing page.
+
+* **URL**: `/api/rankings/`
+* **Method**: `GET`
+* **Query Parameters**:
+  * `start_year` (int, e.g., `2015`)
+  * `end_year` (int, e.g., `2026`)
+  * `area` (comma-separated string, e.g., `4601,4602,4611,TNNLS`)
+* **Response Schema**:
+```json
+{
+  "results": [
+    {
+      "rank": 1,
+      "institution": { "id": "1", "name": "Indian Institute of Science" },
+      "score": 142.50,
+      "top_faculty": [
+        { "id": "101", "name": "Dr. Ramesh Kumar", "score": 24.50 },
+        { "id": "102", "name": "Dr. Anita Sharma", "score": 18.00 }
+      ]
+    }
+  ]
+}
+```
+
+---
+
+### 4. Institution Profile
+Fetches details of a specific institution by its ID.
+
+* **URL**: `/api/institutions/{id}/`
+* **Method**: `GET`
+* **Response Schema**:
+```json
+{
+  "id": "1",
+  "name": "Indian Institute of Science",
+  "website": "https://iisc.ac.in",
+  "summary": "Detailed overview description of the institution...",
+  "rank": 1,
+  "score": 142.50,
+  "area_breakdown": {
+    "ai": 64.20,
+    "vision": 22.40,
+    "systems": 18.90,
+    "security": 12.00,
+    "networks": 25.00
+  },
+  "top_faculty": [
+    { "id": "101", "name": "Dr. Ramesh Kumar", "score": 24.50 },
+    { "id": "102", "name": "Dr. Anita Sharma", "score": 18.00 }
+  ]
+}
+```
+
+---
+
+### 5. Institution Score Trends
+Fetches year-over-year performance scores for Chart.js line visualizations.
+
+* **URL**: `/api/institutions/{id}/trends/`
+* **Method**: `GET`
+* **Response Schema**:
+```json
+[
+  { "year": 2020, "score": 110.20 },
+  { "year": 2021, "score": 122.40 },
+  { "year": 2022, "score": 130.10 },
+  { "year": 2023, "score": 142.50 }
+]
+```
+
+---
+
+### 6. Publications Listing
+Fetches publications, optionally filtered by institution ID. Supports standard pagination.
+
+* **URL**: `/api/publications/`
+* **Method**: `GET`
+* **Query Parameters**:
+  * `institution` (string, e.g., `/api/publications/?institution=1`)
+* **Response Schema**:
+```json
+{
+  "results": [
+    {
+      "id": "2001",
+      "title": "Robust Semantic Segmentation on Edge Devices",
+      "year": 2023,
+      "conference": {
+        "acronym": "CVPR",
+        "core_rank": "A*"
+      },
+      "core_rank": "A*",
+      "area": "vision"
+    }
+  ]
+}
+```
+
+---
+
+### 7. Institution Typeahead Search
+Performs autocomplete search on institutions.
+
+* **URL**: `/api/institutions/`
+* **Method**: `GET`
+* **Query Parameters**:
+  * `search` (string, e.g., `/api/institutions/?search=IISc`)
+* **Response Schema**:
+```json
+[
+  {
+    "id": "1",
+    "name": "Indian Institute of Science",
+    "score": 142.50
+  }
+]
+```
+
+---
+
+### 8. Faculty Profile
+Fetches details of a specific faculty member by their ID.
+
+* **URL**: `/api/faculty/{id}/`
+* **Method**: `GET`
+* **Response Schema**:
+```json
+{
+  "id": "101",
+  "name": "Dr. Ramesh Kumar",
+  "bio": "Professor at IISc working on deep learning.",
+  "institution": { "id": "1", "name": "Indian Institute of Science" },
+  "areas": ["ai", "vision"],
+  "dblp_url": "https://dblp.org/pid/k/RameshKumar.html",
+  "scholar_url": "https://scholar.google.com/citations?user=xyz",
+  "score": 24.50,
+  "a_star_score": 16.00,
+  "a_score": 8.50,
+  "publications": [
+    {
+      "title": "Robust Semantic Segmentation on Edge Devices",
+      "year": 2023,
+      "conference": { "acronym": "CVPR", "core_rank": "A*" },
+      "core_rank": "A*"
+    }
+  ]
+}
+```
+
+---
+
+### 9. CS Conferences Listing
+Fetches all eligible CORE A* / A computer science conferences.
+
+* **URL**: `/api/conferences/`
+* **Method**: `GET`
+* **Response Schema**:
+```json
+[
+  {
+    "acronym": "CVPR",
+    "name": "IEEE Conference on Computer Vision and Pattern Recognition",
+    "core_rank": "A*",
+    "area": "vision"
+  },
+  {
+    "acronym": "SIGCOMM",
+    "name": "ACM Special Interest Group on Data Communication",
+    "core_rank": "A*",
+    "area": "networks"
+  }
+]
+```

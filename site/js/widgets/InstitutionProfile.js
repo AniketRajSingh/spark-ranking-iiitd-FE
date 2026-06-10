@@ -1,61 +1,338 @@
-// site/js/widgets/InstitutionProfile.js
+// widgets/InstitutionProfile.js — SPARK Institution Profile
+// Fetches from API by ?id= param. XSS-safe. No hardcoded IDs.
+// Includes Chart.js visualizations for trends and area distributions, and paginated publications.
 
-async function fetchJSON(path) {
-  try {
-    const res = await fetch(path);
-    if (!res.ok) throw new Error(`Fetch error: ${res.statusText}`);
-    return await res.json();
-  } catch (e) {
-    console.warn('Fetch failed for path:', path, e);
-    return null;
-  }
-}
+import fetchJSON from '../utils/fetchJSON.js';
+import { escapeHTML } from '../utils/sanitize.js';
+import { renderErrorCard } from '../utils/errorCard.js';
 
-class InstitutionProfileWidget {
-  constructor(containerSelector) {
+export default class InstitutionProfileWidget {
+  constructor(containerSelector, apiBase) {
     this.container = document.querySelector(containerSelector);
-    if (!this.container) return;
+    this.apiBase   = apiBase;
+    this.pubPage   = 1;
+    this.pubPageSize = 10;
+    this.pubData = [];
 
-    this.nameEl = this.container.querySelector('#inst-name');
-    this.summaryEl = this.container.querySelector('#inst-summary');
-    this.websiteEl = this.container.querySelector('#inst-website');
-    this.facultyListEl = this.container.querySelector('#top-faculty');
-    
+    if (!this.container) return;
     this.init();
   }
 
   async init() {
     const params = new URLSearchParams(window.location.search);
     const instId = params.get('id');
+
     if (!instId) {
-        this.container.innerHTML = "<p>No institution ID provided.</p>";
-        return;
+      this.container.innerHTML = `
+        <div class="error-card bg-red-50 border border-red-100 rounded-xl p-6 text-center" role="alert">
+          <p class="text-sm font-medium text-red-700">No institution ID provided in the URL.</p>
+        </div>`;
+      return;
     }
 
-    // In a real app, this would be `/api/institutions/${instId}`
-    const dataUrl = instId === '8' ? '/site/data/institution.json' : '/site/data/institution-generic.json';
-    const data = await fetchJSON(dataUrl);
+    if (!this.apiBase) {
+      renderErrorCard(this.container, 'No API configured. Set API_BASE in env.js.', null);
+      return;
+    }
 
-    if (data) {
-      this.render(data);
-    } else {
-      this.container.innerHTML = "<p>Could not load institution data.</p>";
+    // Show skeleton loader
+    this.container.innerHTML = `
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-pulse">
+        <div class="lg:col-span-2 space-y-6">
+          <div class="card p-6 space-y-3">
+            <div class="skeleton h-8 w-2/3 bg-gray-200 rounded"></div>
+            <div class="skeleton h-4 w-1/3 bg-gray-200 rounded"></div>
+            <div class="skeleton h-4 w-full bg-gray-200 rounded mt-4"></div>
+          </div>
+          <div class="card p-6 space-y-4">
+            <div class="skeleton h-6 w-1/4 bg-gray-200 rounded"></div>
+            <div class="skeleton h-4 w-full bg-gray-200 rounded"></div>
+            <div class="skeleton h-4 w-full bg-gray-200 rounded"></div>
+          </div>
+        </div>
+        <div class="space-y-6">
+          <div class="card p-6 space-y-4">
+            <div class="skeleton h-32 w-full bg-gray-200 rounded"></div>
+          </div>
+        </div>
+      </div>`;
+
+    try {
+      // Fetch institution info
+      const data = await fetchJSON(`${this.apiBase}/institutions/${instId}/`);
+      if (!data) throw new Error('Empty response');
+
+      // Fetch trends
+      let trends = [];
+      try {
+        const trendData = await fetchJSON(`${this.apiBase}/institutions/${instId}/trends/`);
+        if (Array.isArray(trendData)) {
+          trends = trendData;
+        } else if (trendData && typeof trendData === 'object') {
+          trends = trendData.trends || Object.keys(trendData).map(y => ({ year: parseInt(y), score: trendData[y] }));
+        }
+      } catch (e) {
+        console.warn('[SPARK] Could not load trends:', e.message);
+      }
+
+      // Fetch publications
+      try {
+        const pubResponse = await fetchJSON(`${this.apiBase}/publications/?institution=${instId}`);
+        if (Array.isArray(pubResponse)) {
+          this.pubData = pubResponse;
+        } else if (pubResponse && typeof pubResponse === 'object') {
+          this.pubData = pubResponse.results || pubResponse.publications || [];
+        }
+      } catch (e) {
+        console.warn('[SPARK] Could not load publications:', e.message);
+      }
+
+      this.render(data, trends);
+    } catch (e) {
+      console.error('[SPARK] Institution fetch failed:', e);
+      renderErrorCard(this.container, 'Could not load institution data.', () => this.init());
     }
   }
 
-  render(data) {
-    this.nameEl.textContent = data.name;
-    this.summaryEl.textContent = data.summary || '';
-    
-    if (this.websiteEl && data.website) {
-      this.websiteEl.href = data.website;
-      this.websiteEl.textContent = data.website;
+  render(data, trends) {
+    const name    = escapeHTML(data.name || 'Unknown Institution');
+    const website = escapeHTML(data.website || '');
+    const summary = escapeHTML(data.summary || data.description || 'No overview available.');
+    const rank    = data.rank ? escapeHTML(data.rank) : null;
+    const score   = data.score != null ? escapeHTML(Number(data.score).toFixed(2)) : null;
+
+    const isSubpage = window.location.pathname.includes('/pages/');
+    const prefix = isSubpage ? '../' : './';
+
+    // Render top faculty
+    const topFacultyHTML = Array.isArray(data.top_faculty) && data.top_faculty.length
+      ? data.top_faculty.map(f => `
+          <li class="flex items-center justify-between py-3 border-b border-gray-100 last:border-0 hover:bg-gray-50/50 px-2 rounded transition-colors">
+            <a href="${prefix}pages/faculty-profile.html?id=${escapeHTML(f.id)}"
+               class="text-sm font-semibold text-teal-700 hover:text-teal-900 hover:underline">
+              ${escapeHTML(f.name)}
+            </a>
+            <span class="text-xs font-mono font-medium text-gray-500 tabular-nums">${escapeHTML(Number(f.score || 0).toFixed(2))} pts</span>
+          </li>`).join('')
+      : `<li class="text-sm text-gray-400 py-3">No faculty data available.</li>`;
+
+    // Outer layout structure
+    this.container.innerHTML = `
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+        <!-- Left Column (Main Info & Lists) -->
+        <div class="lg:col-span-2 space-y-6">
+
+          <!-- Profile Header -->
+          <div class="card p-6">
+            <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+              <div class="flex-1">
+                <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 leading-tight">${name}</h1>
+                ${website ? `
+                  <a href="${website}" target="_blank" rel="noopener noreferrer"
+                     class="text-sm text-teal-600 hover:text-teal-800 hover:underline mt-2 inline-flex items-center gap-1">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+                    </svg>
+                    ${website}
+                  </a>` : ''}
+                <p class="mt-4 text-sm sm:text-base text-gray-600 leading-relaxed">${summary}</p>
+              </div>
+              
+              <!-- Big Stat Medals -->
+              ${rank || score ? `
+                <div class="flex gap-4 sm:flex-col sm:items-end flex-shrink-0">
+                  ${rank ? `
+                    <div class="stat-card w-32 text-center bg-teal-50/55 border border-teal-100/60 rounded-xl p-3">
+                      <span class="text-xs text-gray-400 font-semibold block uppercase tracking-wider">National Rank</span>
+                      <span class="text-2xl font-black text-teal-600 block mt-0.5">#${rank}</span>
+                    </div>` : ''}
+                  ${score ? `
+                    <div class="stat-card w-32 text-center bg-teal-50/55 border border-teal-100/60 rounded-xl p-3">
+                      <span class="text-xs text-gray-400 font-semibold block uppercase tracking-wider">SPARK Score</span>
+                      <span class="text-2xl font-black text-teal-600 block mt-0.5">${score}</span>
+                    </div>` : ''}
+                </div>` : ''}
+            </div>
+          </div>
+
+          <!-- Top Faculty List -->
+          <div class="card p-6">
+            <h2 class="text-lg font-bold text-gray-800 border-b border-gray-100 pb-3 mb-3">Top Faculty</h2>
+            <ul class="divide-y divide-gray-100">
+              ${topFacultyHTML}
+            </ul>
+            <div class="mt-4 pt-3 border-t border-gray-100">
+              <a href="${prefix}pages/faculty.html" class="inline-flex items-center text-xs font-semibold text-teal-600 hover:text-teal-800 hover:underline gap-1">
+                View all faculty <span aria-hidden="true">→</span>
+              </a>
+            </div>
+          </div>
+
+          <!-- Publications Listing -->
+          <div class="card p-6">
+            <h2 class="text-lg font-bold text-gray-800 border-b border-gray-100 pb-3 mb-3">Publications</h2>
+            <div id="pubs-list-container">
+              <!-- Rendered dynamically below -->
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Right Column (Charts & Stats) -->
+        <div class="space-y-6">
+
+          <!-- Trends Chart -->
+          <div class="card p-6">
+            <h2 class="text-base font-bold text-gray-800 mb-4">Score Trends</h2>
+            <div class="relative h-48 w-full">
+              <canvas id="trends-chart"></canvas>
+            </div>
+          </div>
+
+          <!-- Research Area Distribution Chart -->
+          <div class="card p-6">
+            <h2 class="text-base font-bold text-gray-800 mb-4">Area Breakdown</h2>
+            <div class="relative h-64 w-full">
+              <canvas id="areas-chart"></canvas>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+    `;
+
+    this._renderPublications();
+    this._renderCharts(trends, data.area_scores || data.area_breakdown || {});
+  }
+
+  _renderPublications() {
+    const container = this.container.querySelector('#pubs-list-container');
+    if (!container) return;
+
+    if (!this.pubData || this.pubData.length === 0) {
+      container.innerHTML = `<p class="text-sm text-gray-400 py-3">No publications found.</p>`;
+      return;
     }
 
-    if (this.facultyListEl && data.top_faculty) {
-      this.facultyListEl.innerHTML = data.top_faculty
-        .map(f => `<li><a href="${f.url}">${f.name}</a> — ${f.score}</li>`)
-        .join('');
+    const startIdx = (this.pubPage - 1) * this.pubPageSize;
+    const endIdx = startIdx + this.pubPageSize;
+    const pageItems = this.pubData.slice(startIdx, endIdx);
+    const totalPages = Math.ceil(this.pubData.length / this.pubPageSize);
+
+    const pubsHTML = pageItems.map(p => {
+      const title = escapeHTML(p.title || '');
+      const year  = escapeHTML(p.year  || '');
+      const conf  = escapeHTML(p.conference?.acronym || p.conference || p.venue || '');
+      const core  = escapeHTML(p.core_rank || (p.conference && p.conference.core_rank) || '');
+      const coreBadge = core
+        ? `<span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold flex-shrink-0
+            ${core === 'A*' ? 'bg-yellow-100 text-yellow-800' : 'bg-blue-100 text-blue-800'}">
+            ${core}
+          </span>`
+        : '';
+      return `
+        <li class="py-3 border-b border-gray-100 last:border-0 flex items-start gap-2.5">
+          ${coreBadge}
+          <div class="min-w-0 flex-1">
+            <h4 class="text-sm font-semibold text-gray-800 leading-snug">${title}</h4>
+            <p class="text-xs text-gray-400 mt-1">
+              ${conf ? `<span class="font-medium text-teal-600">${conf}</span> · ` : ''}${year}
+            </p>
+          </div>
+        </li>`;
+    }).join('');
+
+    container.innerHTML = `
+      <ul class="divide-y divide-gray-50 mb-4">
+        ${pubsHTML}
+      </ul>
+      <div class="flex items-center justify-between border-t border-gray-100 pt-3 text-sm">
+        <span class="text-xs text-gray-400">Page ${this.pubPage} of ${totalPages} (${this.pubData.length} total)</span>
+        <div class="flex gap-2">
+          <button id="pub-prev" ${this.pubPage === 1 ? 'disabled' : ''}
+            class="px-2.5 py-1 text-xs font-semibold rounded border border-gray-200 hover:bg-gray-50 disabled:opacity-40 disabled:pointer-events-none transition-colors">
+            Prev
+          </button>
+          <button id="pub-next" ${this.pubPage === totalPages ? 'disabled' : ''}
+            class="px-2.5 py-1 text-xs font-semibold rounded border border-gray-200 hover:bg-gray-50 disabled:opacity-40 disabled:pointer-events-none transition-colors">
+            Next
+          </button>
+        </div>
+      </div>
+    `;
+
+    const prevBtn = container.querySelector('#pub-prev');
+    const nextBtn = container.querySelector('#pub-next');
+    if (prevBtn) prevBtn.addEventListener('click', () => { this.pubPage--; this._renderPublications(); });
+    if (nextBtn) nextBtn.addEventListener('click', () => { this.pubPage++; this._renderPublications(); });
+  }
+
+  _renderCharts(trends, areaScores) {
+    if (typeof Chart === 'undefined') {
+      console.warn('[SPARK] Chart.js is not loaded.');
+      return;
+    }
+
+    // 1. Trends Line Chart
+    const trendsCanvas = this.container.querySelector('#trends-chart');
+    if (trendsCanvas && trends.length > 0) {
+      const sortedTrends = [...trends].sort((a, b) => a.year - b.year);
+      new Chart(trendsCanvas, {
+        type: 'line',
+        data: {
+          labels: sortedTrends.map(t => t.year),
+          datasets: [{
+            label: 'Score',
+            data: sortedTrends.map(t => t.score),
+            borderColor: '#0d9488',
+            backgroundColor: 'rgba(13, 148, 136, 0.1)',
+            borderWidth: 2,
+            tension: 0.3,
+            fill: true,
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            y: { grid: { color: '#f3f4f6' }, ticks: { color: '#9ca3af', font: { size: 10 } } },
+            x: { grid: { display: false }, ticks: { color: '#9ca3af', font: { size: 10 } } }
+          }
+        }
+      });
+    }
+
+    // 2. Area Bar Chart
+    const areasCanvas = this.container.querySelector('#areas-chart');
+    if (areasCanvas && areaScores && Object.keys(areaScores).length > 0) {
+      const labels = Object.keys(areaScores);
+      const data = Object.values(areaScores);
+      new Chart(areasCanvas, {
+        type: 'bar',
+        data: {
+          labels: labels.map(l => l.toUpperCase()),
+          datasets: [{
+            data: data,
+            backgroundColor: 'rgba(13, 148, 136, 0.75)',
+            hoverBackgroundColor: 'rgba(13, 148, 136, 0.95)',
+            borderRadius: 6,
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          indexAxis: 'y',
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { grid: { color: '#f3f4f6' }, ticks: { color: '#9ca3af', font: { size: 10 } } },
+            y: { grid: { display: false }, ticks: { color: '#4b5563', font: { size: 10, weight: 'bold' } } }
+          }
+        }
+      });
     }
   }
 }

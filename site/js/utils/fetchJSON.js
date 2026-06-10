@@ -7,7 +7,7 @@
  * @param {{ timeout?: number }} [opts]
  * @returns {Promise<any|null>} parsed JSON or null on failure
  */
-async function fetchJSON(url, opts = {}) {
+export default async function fetchJSON(url, opts = {}) {
   const timeout = opts.timeout ?? 8000;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeout);

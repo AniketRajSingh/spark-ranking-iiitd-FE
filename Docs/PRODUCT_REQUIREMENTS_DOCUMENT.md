@@ -1,5 +1,5 @@
 # PRODUCT REQUIREMENTS DOCUMENT (PRD)
-# Indian CS Research Rankings (ICSRank)
+# SPARK — Scholarly Publication & Academic Ranking Knowledgebase
 
 ## 1. Product Vision
 
@@ -165,7 +165,7 @@ Backend:
 - Django API
 
 Frontend:
-- Static HTML/CSS/JS
+- Static HTML/CSS/JS (ES6 Modules, Tailwind CSS)
 
 Hosting:
 - Cloudflare Pages

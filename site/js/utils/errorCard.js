@@ -1,5 +1,5 @@
 // utils/errorCard.js — Unified error display for SPARK
-// Replaces ad-hoc <p>Could not load...</p> patterns with a consistent, accessible card.
+import { escapeHTML } from './sanitize.js';
 
 /**
  * Render a styled error card inside a container element.
@@ -7,7 +7,7 @@
  * @param {string} message - Human-readable error message
  * @param {Function|null} [retryFn] - Optional retry callback; shows a Retry button if provided
  */
-function renderErrorCard(container, message, retryFn = null) {
+export function renderErrorCard(container, message, retryFn = null) {
   if (!container) return;
   const retryBtn = retryFn
     ? `<button
@@ -17,7 +17,7 @@ function renderErrorCard(container, message, retryFn = null) {
     : '';
 
   container.innerHTML = `
-    <div class="error-card" role="alert" aria-live="assertive">
+    <div class="error-card flex flex-col items-center justify-center p-6 bg-red-50 border border-red-100 rounded-xl gap-2 text-center" role="alert" aria-live="assertive">
       <svg class="w-8 h-8 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
           d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
@@ -38,21 +38,21 @@ function renderErrorCard(container, message, retryFn = null) {
  * @param {HTMLElement} container
  * @param {number} [rows=5] - Number of skeleton rows to show
  */
-function renderSkeleton(container, rows = 5) {
+export function renderSkeleton(container, rows = 5) {
   if (!container) return;
   container.setAttribute('aria-busy', 'true');
   const skeletonRows = Array.from({ length: rows }, (_, i) => `
     <tr>
-      <td class="px-4 py-3"><div class="skeleton h-4 w-8"></div></td>
-      <td class="px-4 py-3"><div class="skeleton h-4 w-48 ${i % 2 === 0 ? '' : 'w-40'}"></div></td>
-      <td class="px-4 py-3"><div class="skeleton h-4 w-16"></div></td>
+      <td class="px-4 py-3"><div class="skeleton h-4 w-8 bg-gray-200 rounded animate-pulse"></div></td>
+      <td class="px-4 py-3"><div class="skeleton h-4 w-48 ${i % 2 === 0 ? '' : 'w-40'} bg-gray-200 rounded animate-pulse"></div></td>
+      <td class="px-4 py-3"><div class="skeleton h-4 w-16 bg-gray-200 rounded animate-pulse"></div></td>
     </tr>
   `).join('');
 
   container.innerHTML = `
     <div class="overflow-x-auto rounded-xl border border-gray-100">
       <table class="min-w-full" aria-label="Loading...">
-        <tbody class="divide-y divide-gray-100 bg-white animate-pulse">
+        <tbody class="divide-y divide-gray-100 bg-white">
           ${skeletonRows}
         </tbody>
       </table>
@@ -64,6 +64,6 @@ function renderSkeleton(container, rows = 5) {
  * Remove aria-busy once loading is complete.
  * @param {HTMLElement} container
  */
-function clearBusy(container) {
+export function clearBusy(container) {
   if (container) container.removeAttribute('aria-busy');
 }

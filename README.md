@@ -1,4 +1,4 @@
-# Indian CS Research Rankings (ICSRank)
+# SPARK — Scholarly Publication & Academic Ranking Knowledgebase
 
 ## Vision
 A transparent, reproducible ranking system for Indian institutions based on CORE A and A* conference publications using IRINS, DBLP, and CORE.
@@ -19,22 +19,21 @@ Rank Indian institutions by verified top-tier CS research output.
 
 ### Frontend
 - HTML
-- CSS
-- JavaScript
-- No frontend frameworks
+- CSS (Tailwind CSS)
+- JavaScript (ES6 Modules)
 - Static deployment compatible
 
 ### Ranking Formula
-- A* = 4 points
-- A = 2 points
+- CORE A* = 4 points
+- CORE A = 2 points
 - Fractional author credit
 
 ## Features
 - National rankings
-- Institution profiles
+- Institution profiles (with trends and category score charts)
 - Faculty profiles
-- Conference analytics
-- Comparison tools
+- Conference directories
+- Comparison scorecard with radar charts
 - Area-wise rankings
 
 ## Principles

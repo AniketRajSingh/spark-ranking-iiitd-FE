@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>SPARK — Faculty Profile</title>
-  <meta name="description" content="Scholarly publication records, metrics, and score breakdown for the selected faculty member." />
+  <title>SPARK — Research Venues</title>
+  <meta name="description" content="View computer science research venues, including CORE A* / A conferences and ACM/IEEE journals." />
   <link rel="icon" href="../logo.png" type="image/png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -13,26 +13,48 @@
   <style>
     body { font-family: 'Inter', ui-sans-serif, system-ui, sans-serif; }
     .hero-gradient { background: linear-gradient(135deg, #f0fdfa 0%, #e0f2fe 50%, #f0fdf4 100%); }
-    .area-chip {
-      display: inline-flex;
-      align-items: center;
-      padding: 0.25rem 0.625rem;
-      border-radius: 9999px;
-      font-size: 0.75rem;
-      font-weight: 500;
-      background-color: #f0fdfa;
-      color: #0d9488;
-      border: 1px solid #ccfbf1;
-    }
   </style>
 </head>
 <body class="bg-gray-50 text-gray-900 antialiased">
 
   <div id="navbar-placeholder"></div>
 
-  <!-- Main Container -->
-  <main class="max-w-4xl mx-auto px-4 sm:px-6 py-8 faculty-profile-page">
-    <!-- FacultyProfileWidget renders here dynamically -->
+  <!-- Header -->
+  <section class="hero-gradient border-b border-gray-100 py-10">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 tracking-tight">
+        CORE CS Conferences & Venues
+      </h1>
+      <p class="mt-2 text-sm sm:text-base text-gray-600 max-w-xl">
+        Elite publication venues categorized by subfields, used to calculate academic ranking scores.
+      </p>
+    </div>
+  </section>
+
+  <!-- Main Grid -->
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="flex flex-col lg:flex-row gap-6">
+
+      <!-- Conference List (Left) -->
+      <div class="flex-1 min-w-0">
+        <div class="card p-0 overflow-hidden bg-white">
+          <div class="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+            <h2 class="text-base font-semibold text-gray-800 font-sans">Eligible Venues</h2>
+          </div>
+          <div id="conference-list" aria-busy="true" aria-live="polite">
+            <!-- ConferenceListWidget renders here -->
+          </div>
+        </div>
+      </div>
+
+      <!-- Filters (Right) -->
+      <aside class="w-full lg:w-72 xl:w-80 flex-shrink-0">
+        <div id="filter-panel">
+          <!-- FilterWidget renders here -->
+        </div>
+      </aside>
+
+    </div>
   </main>
 
   <!-- Footer -->
@@ -53,7 +75,7 @@
   <script src="../js/navbar.js"></script>
   <script src="../env.js"></script>
   <script src="../js/config.js"></script>
-  <script type="module" src="../js/pages/faculty-profile.js"></script>
+  <script type="module" src="../js/pages/conference.js"></script>
 
   <script>
     document.getElementById('footer-year').textContent = new Date().getFullYear();

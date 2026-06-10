@@ -1,50 +1,147 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>ICSRank — Home</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  </head>
-  <body>
-    <div id="navbar-placeholder"></div>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SPARK — Scholarly Publication & Academic Ranking Knowledgebase</title>
+  <meta name="description" content="SPARK is an open-source CS research ranking system for Indian institutions using ICORE A*/A conferences and IEEE/ACM journals. Transparent, reproducible, and comprehensive." />
+  <meta property="og:title" content="SPARK — Indian CS Research Rankings" />
+  <meta property="og:description" content="Transparent rankings of Indian CS research institutions based on CORE A*/A publications and IEEE/ACM journals." />
+  <meta property="og:type" content="website" />
+  <link rel="icon" href="./logo.png" type="image/png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./css/tailwind.css" />
+  <style>
+    body { font-family: 'Inter', ui-sans-serif, system-ui, sans-serif; }
+    .hero-gradient { background: linear-gradient(135deg, #f0fdfa 0%, #e0f2fe 50%, #f0fdf4 100%); }
+    .stat-number { font-variant-numeric: tabular-nums; }
+    tr[tabindex="0"]:focus { outline: 2px solid #0d9488; outline-offset: -2px; }
+    .search-clear { display: none; }
+    .search-wrapper:focus-within .search-clear,
+    .search-wrapper.has-value .search-clear { display: flex; }
+  </style>
+</head>
+<body class="bg-gray-50 text-gray-900 antialiased">
 
-    <main class="max-w-6xl mx-auto px-4 py-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
-      <div class="lg:col-span-2">
-        <section class="bg-white shadow rounded p-6 mb-6">
-          <h2 class="text-2xl font-semibold text-gray-900">Transparent rankings for Indian CS research</h2>
-          <p class="mt-2 text-gray-700">Rankings based on CORE A / A* publications, DBLP verification and IRINS mappings.</p>
-        </section>
+  <div id="navbar-placeholder"></div>
 
-        <section class="bg-white shadow rounded p-6">
-          <h3 class="text-lg font-semibold mb-4">National Rankings</h3>
-          <div id="ranking-table">
-            <!-- RankingTableWidget will render here -->
+  <!-- ── Hero ─────────────────────────────────────────────────────────── -->
+  <section class="hero-gradient border-b border-gray-100">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-16">
+      <div class="max-w-3xl">
+        <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-teal-100 text-teal-700 mb-4">
+          🎓 Open-Source · Transparent · Reproducible
+        </span>
+        <h1 class="text-3xl sm:text-4xl lg:text-5xl font-bold text-gray-900 leading-tight tracking-tight">
+          Indian CS Research Rankings
+        </h1>
+        <p class="mt-4 text-base sm:text-lg text-gray-600 max-w-2xl">
+          SPARK ranks CS departments using <strong class="text-gray-800">ICORE A*/A</strong> conferences and
+          <strong class="text-gray-800">IEEE/ACM</strong> journals — a broader, more inclusive alternative
+          to systems like CSRankings.
+        </p>
+
+        <!-- Stat counters -->
+        <div class="mt-8 flex flex-wrap gap-4">
+          <div class="stat-card">
+            <span id="stat-institutions" class="stat-number text-2xl font-bold text-teal-600">—</span>
+            <span class="text-xs text-gray-500 mt-0.5">Institutions</span>
           </div>
-        </section>
+          <div class="stat-card">
+            <span id="stat-faculty" class="stat-number text-2xl font-bold text-teal-600">—</span>
+            <span class="text-xs text-gray-500 mt-0.5">Faculty</span>
+          </div>
+          <div class="stat-card">
+            <span id="stat-pubs" class="stat-number text-2xl font-bold text-teal-600">—</span>
+            <span class="text-xs text-gray-500 mt-0.5">Publications</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Main layout ────────────────────────────────────────────────────── -->
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="flex flex-col lg:flex-row gap-6">
+
+      <!-- ── Left: Rankings ──────────────────────────────────────────────── -->
+      <div class="flex-1 min-w-0">
+
+        <!-- Search bar -->
+        <div class="relative mb-4 search-wrapper" id="search-wrapper">
+          <div class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+            <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z"/>
+            </svg>
+          </div>
+          <input
+            id="search-input"
+            type="search"
+            placeholder="Search institutions…"
+            class="w-full pl-10 pr-10 py-2.5 border border-gray-200 rounded-lg text-sm bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 transition-all shadow-sm"
+            aria-label="Search institutions"
+            autocomplete="off"
+          />
+          <button
+            id="search-clear"
+            class="search-clear absolute inset-y-0 right-0 items-center pr-3 text-gray-400 hover:text-gray-600"
+            aria-label="Clear search"
+            type="button"
+          >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+
+        <!-- Rankings section -->
+        <div class="card p-0 overflow-hidden">
+          <div class="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+            <h2 class="text-base font-semibold text-gray-800">National Rankings</h2>
+            <span id="results-count" class="text-xs text-gray-400"></span>
+          </div>
+          <div id="ranking-table" aria-busy="true" aria-live="polite">
+            <!-- RankingTableWidget renders here -->
+          </div>
+        </div>
+
       </div>
 
-      <aside class="lg:col-span-1">
+      <!-- ── Right: Filters ───────────────────────────────────────────────── -->
+      <aside class="w-full lg:w-72 xl:w-80 flex-shrink-0">
         <div id="filter-panel">
-          <!-- FilterWidget will render here -->
+          <!-- FilterWidget renders here -->
         </div>
       </aside>
-    </main>
 
-    <footer class="max-w-6xl mx-auto px-4 py-6 text-gray-600 text-sm">
-      <p>© ICSRank — Transparent research rankings</p>
-    </footer>
+    </div>
+  </div>
 
-  <script src="/site/js/navbar.js"></script>
-  <script src="/site/env.js"></script>
-  <script src="/site/js/config.js"></script>
-  <!-- Utils must load before any widget that calls escapeHTML / clearBusy -->
-  <script src="/site/js/utils/sanitize.js"></script>
-  <script src="/site/js/utils/errorCard.js"></script>
-  <script src="/site/js/utils/fetchJSON.js"></script>
-  <script src="/site/js/widgets/Filter.js"></script>
-  <script src="/site/js/widgets/FullDataTable.js"></script>
-  <script src="/site/js/widgets/RankingTable.js"></script>
-  <script src="/site/js/app.js"></script>
-  </body>
+  <!-- ── Footer ─────────────────────────────────────────────────────────── -->
+  <footer class="border-t border-gray-100 mt-8">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex flex-col sm:flex-row items-center justify-between gap-3">
+      <p class="text-sm text-gray-400">
+        © <span id="footer-year"></span> SPARK — Scholarly Publication & Academic Ranking Knowledgebase
+      </p>
+      <div class="flex items-center gap-4 text-sm text-gray-400">
+        <a href="./pages/methodology.html" class="hover:text-teal-600 transition-colors">Methodology</a>
+        <a href="./pages/about.html" class="hover:text-teal-600 transition-colors">About</a>
+        <a href="https://github.com" target="_blank" rel="noopener noreferrer" class="hover:text-teal-600 transition-colors">GitHub</a>
+      </div>
+    </div>
+  </footer>
+
+  <!-- ── Scripts ────────────────────────────────────────────────────────── -->
+  <script src="./js/navbar.js"></script>
+  <script src="./env.js"></script>
+  <script src="./js/config.js"></script>
+  <script type="module" src="./js/pages/home.js"></script>
+
+  <script>
+    // Dynamic footer year
+    document.getElementById('footer-year').textContent = new Date().getFullYear();
+  </script>
+</body>
 </html>

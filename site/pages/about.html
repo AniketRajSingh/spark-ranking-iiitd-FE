@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SPARK — About</title>
+  <meta name="description" content="About SPARK — Scholarly Publication & Academic Ranking Knowledgebase for Indian CS departments." />
+  <link rel="icon" href="../logo.png" type="image/png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="../css/tailwind.css" />
+  <style>
+    body { font-family: 'Inter', ui-sans-serif, system-ui, sans-serif; }
+    .hero-gradient { background: linear-gradient(135deg, #f0fdfa 0%, #e0f2fe 50%, #f0fdf4 100%); }
+  </style>
+</head>
+<body class="bg-gray-50 text-gray-900 antialiased">
+
+  <div id="navbar-placeholder"></div>
+
+  <!-- Header -->
+  <section class="hero-gradient border-b border-gray-100 py-10">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 tracking-tight">
+        About SPARK
+      </h1>
+      <p class="mt-2 text-sm sm:text-base text-gray-600 max-w-xl">
+        Understanding the vision behind the Scholarly Publication & Academic Ranking Knowledgebase.
+      </p>
+    </div>
+  </section>
+
+  <!-- Content -->
+  <main class="max-w-4xl mx-auto px-4 sm:px-6 py-8">
+    <div class="card p-6 sm:p-8 space-y-6">
+      
+      <div>
+        <h2 class="text-lg font-bold text-teal-800 uppercase tracking-wide">The Vision</h2>
+        <p class="text-gray-600 mt-2 leading-relaxed text-sm sm:text-base">
+          SPARK is an open-source, transparent academic ranking system designed specifically for Computer Science departments in Indian institutions. It was created to provide a localized, fair, and comprehensive assessment of CS research publications in India, overcoming the narrow filters of global systems like CSRankings.
+        </p>
+      </div>
+
+      <hr class="border-gray-100">
+
+      <div>
+        <h2 class="text-lg font-bold text-gray-800">Key Features</h2>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4 text-sm">
+          <div class="p-4 bg-teal-50/50 border border-teal-100/60 rounded-xl">
+            <h3 class="font-bold text-teal-900">CORE-Rank Centric</h3>
+            <p class="text-gray-600 mt-1">Focuses strictly on high-impact venues (A* and A rating) from the Computing Research and Education Association (CORE) rankings.</p>
+          </div>
+          <div class="p-4 bg-teal-50/50 border border-teal-100/60 rounded-xl">
+            <h3 class="font-bold text-teal-900">Fractional Credit</h3>
+            <p class="text-gray-600 mt-1">Equal division of score amongst co-authors to ensure fair attribution and discourage artificial publication inflation.</p>
+          </div>
+          <div class="p-4 bg-teal-50/50 border border-teal-100/60 rounded-xl">
+            <h3 class="font-bold text-teal-900">Indian Context</h3>
+            <p class="text-gray-600 mt-1">Directly maps active research personnel using the IRINS (Indian Research Information Network System) infrastructure.</p>
+          </div>
+          <div class="p-4 bg-teal-50/50 border border-teal-100/60 rounded-xl">
+            <h3 class="font-bold text-teal-900">Open & Reproducible</h3>
+            <p class="text-gray-600 mt-1">Every score represents a deterministic summation. The underlying publications can be audited directly by visitors.</p>
+          </div>
+        </div>
+      </div>
+
+      <hr class="border-gray-100">
+
+      <div>
+        <h2 class="text-lg font-bold text-gray-800">Contributing & Scope</h2>
+        <p class="text-gray-600 mt-2 leading-relaxed text-sm sm:text-base">
+          The code for the SPARK rankings knowledgebase is entirely open-source. Academic contributors are welcome to review the scoring models, submit publication verification adjustments, or integrate additional data parsing pipelines for conferences and journals.
+        </p>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer class="border-t border-gray-100 mt-8">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex flex-col sm:flex-row items-center justify-between gap-3">
+      <p class="text-sm text-gray-400">
+        © <span id="footer-year"></span> SPARK — Scholarly Publication & Academic Ranking Knowledgebase
+      </p>
+      <div class="flex items-center gap-4 text-sm text-gray-400">
+        <a href="./methodology.html" class="hover:text-teal-600 transition-colors">Methodology</a>
+        <a href="./about.html" class="hover:text-teal-600 transition-colors">About</a>
+        <a href="https://github.com" target="_blank" rel="noopener noreferrer" class="hover:text-teal-600 transition-colors">GitHub</a>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Scripts -->
+  <script src="../js/navbar.js"></script>
+  <script src="../env.js"></script>
+  <script src="../js/config.js"></script>
+
+  <script>
+    document.getElementById('footer-year').textContent = new Date().getFullYear();
+  </script>
+</body>
+</html>

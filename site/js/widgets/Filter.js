@@ -10,7 +10,7 @@ const AREA_ICONS = {
   default:  '📚',
 };
 
-class FilterWidget {
+export default class FilterWidget {
   constructor(containerId, initialConfig) {
     this.container = document.getElementById(containerId);
     if (!this.container) return;
@@ -31,7 +31,7 @@ class FilterWidget {
     const currentYear = new Date().getFullYear();
     const areasHTML = (this.config.areas || []).map(area => {
       const icon = AREA_ICONS[area.id] || AREA_ICONS.default;
-      const checked = this.state.areas.has(String(area.code || area.id)) ? 'checked' : '';
+      const checked = this.state.areas.has(String(area.id)) ? 'checked' : '';
       return `
         <label class="inline-flex items-center gap-2 px-3 py-1.5 border border-gray-200 rounded-lg text-sm text-gray-700
                        bg-white hover:border-teal-400 hover:text-teal-700 cursor-pointer transition-colors duration-150
@@ -40,7 +40,6 @@ class FilterWidget {
             type="checkbox"
             id="area-${area.id}"
             data-area="${area.id}"
-            data-area-code="${area.code || ''}"
             ${checked}
             class="sr-only"
           >
@@ -134,7 +133,7 @@ class FilterWidget {
     // Area checkboxes — live filter on change
     this.container.addEventListener('change', e => {
       if (e.target.type === 'checkbox') {
-        const code = e.target.dataset.areaCode || e.target.dataset.area;
+        const code = e.target.dataset.area;
         if (e.target.checked) {
           this.state.areas.add(String(code));
         } else {
@@ -148,6 +147,7 @@ class FilterWidget {
     const onYearChange = () => {
       const startInput = this.container.querySelector('#start-year');
       const endInput = this.container.querySelector('#end-year');
+      if (!startInput || !endInput) return;
       const sy = parseInt(startInput.value, 10);
       const ey = parseInt(endInput.value, 10);
       if (!this._validateYears(sy, ey)) return;
@@ -156,8 +156,10 @@ class FilterWidget {
       this._debounce(() => this._dispatch(), 400);
     };
 
-    this.container.querySelector('#start-year').addEventListener('input', onYearChange);
-    this.container.querySelector('#end-year').addEventListener('input', onYearChange);
+    const startYrEl = this.container.querySelector('#start-year');
+    const endYrEl = this.container.querySelector('#end-year');
+    if (startYrEl) startYrEl.addEventListener('input', onYearChange);
+    if (endYrEl) endYrEl.addEventListener('input', onYearChange);
 
     // Toggle all areas
     const toggleBtn = this.container.querySelector('#toggle-all-areas');
@@ -168,7 +170,7 @@ class FilterWidget {
           this.state.areas.clear();
           toggleBtn.textContent = 'Select all areas';
         } else {
-          this.config.areas.forEach(a => this.state.areas.add(String(a.code || a.id)));
+          this.config.areas.forEach(a => this.state.areas.add(String(a.id)));
           toggleBtn.textContent = 'Deselect all areas';
         }
         // Re-render to update checkbox states

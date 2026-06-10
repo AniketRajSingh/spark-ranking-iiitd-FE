@@ -1,164 +1,162 @@
 // utils/areaTaxonomy.js — SPARK Research Area Taxonomy
 //
 // Maps raw area codes (ICORE FoR codes + IEEE/ACM journal abbreviations)
-// to broad human-readable categories shown in the filter UI.
+// to 10 broad human-readable categories displayed in the filter UI.
 //
-// When the user selects "AI", the filter expands it to all AI sub-codes
-// (4601, 4602, 4611, TNNLS, ...) before sending to the API.
+// When the user selects e.g. "AI & ML", the filter expands it to all
+// raw sub-codes (4601, 4602, 4611, TNNLS, …) before querying the API.
 
-// ─── Broad categories shown in the filter UI ──────────────────────────────
-const BROAD_AREAS = [
-  { id: 'ai',       name: 'AI & ML',   icon: '🤖' },
-  { id: 'vision',   name: 'Vision',    icon: '👁️' },
-  { id: 'systems',  name: 'Systems',   icon: '⚙️' },
-  { id: 'security', name: 'Security',  icon: '🔒' },
-  { id: 'theory',   name: 'Theory',    icon: '📐' },
-  { id: 'graphics', name: 'Graphics',  icon: '🎨' },
+// ─── 10 Broad categories shown in the filter UI ───────────────────────────
+export const BROAD_AREAS = [
+  { id: 'ai',       name: 'AI & ML',           icon: '🤖' },
+  { id: 'vision',   name: 'Computer Vision',   icon: '👁️' },
+  { id: 'systems',  name: 'Systems & OS',       icon: '⚙️' },
+  { id: 'networks', name: 'Networks',           icon: '🌐' },
+  { id: 'security', name: 'Security',           icon: '🔒' },
+  { id: 'theory',   name: 'Theory & Languages', icon: '📐' },
+  { id: 'graphics', name: 'Graphics & Viz',     icon: '🎨' },
+  { id: 'data',     name: 'Data & Databases',   icon: '🗄️' },
+  { id: 'hci',      name: 'HCI & Multimedia',   icon: '🖱️' },
+  { id: 'robotics', name: 'Robotics & Signal',  icon: '🦾' },
 ];
 
-// ─── Raw code → broad category mapping ────────────────────────────────────
-// ICORE FoR (Field of Research) codes: 46xx = Information and Computing Sciences
-// IEEE/ACM journal abbreviations used as area identifiers in SPARK backend
-const AREA_TAXONOMY = {
-  // ── ICORE FoR codes ────────────────────────────────────────────────────
+// ─── Raw code → broad category ────────────────────────────────────────────
+export const AREA_TAXONOMY = {
+
+  // ── ICORE FoR (Field of Research) codes ──────────────────────────────
   '4601': 'ai',       // Applied Computing
   '4602': 'ai',       // Artificial Intelligence
-  '4603': 'vision',   // Computer Vision and Multimedia Computation
+  '4603': 'vision',   // Computer Vision & Multimedia Computation
   '4604': 'security', // Cybersecurity and Privacy
-  '4605': 'systems',  // Data Management and Data Science
-  '4606': 'systems',  // Distributed Computing and Systems Software
+  '4605': 'data',     // Data Management and Data Science
+  '4606': 'systems',  // Distributed Computing & Systems Software
   '4607': 'graphics', // Graphics, Augmented Reality and Games
-  '4608': 'ai',       // Human-Centred Computing (AI-adjacent)
+  '4608': 'hci',      // Human-Centred Computing
   '4611': 'ai',       // Machine Learning
   '4612': 'theory',   // Software Engineering
   '4613': 'theory',   // Theory of Computation
-  'CSE':  'systems',  // General CS&E
+  'CSE':  'systems',  // General CS&E (broad catch-all)
 
-  // ── IEEE Transactions — AI / ML ─────────────────────────────────────────
+  // ── IEEE Transactions — AI / ML ───────────────────────────────────────
   'TNNLS': 'ai',   // Neural Networks and Learning Systems
   'TCYB':  'ai',   // Cybernetics
   'TCSS':  'ai',   // Computational Social Systems
-  'TAFFC': 'ai',   // Affective Computing
-  'CL':    'ai',   // Computational Linguistics
-  'JSTSP': 'ai',   // J. Selected Topics in Signal Processing
-  'TSP':   'ai',   // Signal Processing
-  'SPL':   'ai',   // Signal Processing Letters
-  'TBD':   'ai',   // Big Data
-  'TRO':   'ai',   // Robotics
-  'TCBB':  'ai',   // Computational Biology & Bioinformatics
-
-  // ── ACM Trans — AI / IR ─────────────────────────────────────────────────
+  'CL':    'ai',   // Computational Linguistics / NLP
   'TIST':  'ai',   // Intelligent Systems and Technology
   'TKDD':  'ai',   // Knowledge Discovery from Data
-  'TOIS':  'ai',   // Information Systems (IR)
 
-  // ── IEEE Transactions — Vision ───────────────────────────────────────────
+  // ── IEEE Transactions — Robotics & Signal Processing ─────────────────
+  'TRO':   'robotics', // Robotics
+  'TSP':   'robotics', // Signal Processing
+  'SPL':   'robotics', // Signal Processing Letters
+  'JSTSP': 'robotics', // J. Selected Topics in Signal Processing
+  'TBD':   'data',     // Big Data (data-heavy workloads)
+  'TCBB':  'ai',       // Computational Biology & Bioinformatics
+
+  // ── IEEE — Affective Computing (HCI adjacent) ─────────────────────────
+  'TAFFC': 'hci',  // Affective Computing
+
+  // ── IEEE Transactions — Computer Vision ──────────────────────────────
   'TPAMI': 'vision', // Pattern Analysis and Machine Intelligence
   'TIP':   'vision', // Image Processing
-  'TMM':   'vision', // Multimedia
   'TCSVT': 'vision', // Circuits and Systems for Video Technology
 
-  // ── ACM Trans — Vision / Multimedia ─────────────────────────────────────
-  'TOMM':  'vision', // Multimedia Computing, Communications and Applications
+  // ── IEEE/ACM — Security & Privacy ────────────────────────────────────
+  'TIFS': 'security', // Information Forensics and Security
+  'TDSC': 'security', // Dependable and Secure Computing
+  'TOPS': 'security', // ACM Trans on Privacy and Security
 
-  // ── IEEE Transactions — Security ────────────────────────────────────────
-  'TIFS':  'security', // Information Forensics and Security
-  'TDSC':  'security', // Dependable and Secure Computing
-
-  // ── ACM Trans — Security ────────────────────────────────────────────────
-  'TOPS':  'security', // Privacy and Security
-
-  // ── IEEE Transactions — Systems / Networks ──────────────────────────────
-  'TKDE':   'systems', // Knowledge and Data Engineering
-  'TMC':    'systems', // Mobile Computing
-  'TPDS':   'systems', // Parallel and Distributed Systems
+  // ── IEEE Transactions — Systems & OS ─────────────────────────────────
   'TC':     'systems', // Computers
-  'TVT':    'systems', // Vehicular Technology
-  'TCOM':   'systems', // Communications
-  'TWC':    'systems', // Wireless Communications
+  'TPDS':   'systems', // Parallel and Distributed Systems
+  'TOCS':   'systems', // Computer Systems
+  'TODAES': 'systems', // Design Automation of Electronic Systems
+  'TECS':   'systems', // Embedded Computing Systems
   'TCAD':   'systems', // Computer-Aided Design
   'TVLSI':  'systems', // Very Large Scale Integration
   'TETC':   'systems', // Emerging Topics in Computing
-  'IoTJ':   'systems', // Internet of Things
-  'TII':    'systems', // Industrial Informatics
   'TSC':    'systems', // Services Computing
   'TCC':    'systems', // Cloud Computing
-  'TNSE':   'systems', // Network Science and Engineering
-  'TECS':   'systems', // Embedded Computing Systems
-  'TODAES': 'systems', // Design Automation of Electronic Systems
-  'TOCS':   'systems', // Computer Systems
 
-  // ── IEEE/ACM — Networking ────────────────────────────────────────────────
-  'TON':  'systems', // Networking (IEEE/ACM)
-  'TOSN': 'systems', // Sensor Networks
+  // ── IEEE/ACM — Networks & Mobile ─────────────────────────────────────
+  'TON':  'networks', // Networking (IEEE/ACM joint)
+  'TMC':  'networks', // Mobile Computing
+  'TWC':  'networks', // Wireless Communications
+  'TCOM': 'networks', // Communications
+  'TVT':  'networks', // Vehicular Technology
+  'TNSE': 'networks', // Network Science and Engineering
+  'IoTJ': 'networks', // Internet of Things Journal
+  'TII':  'networks', // Industrial Informatics
+  'TOSN': 'networks', // Sensor Networks
 
-  // ── ACM Trans — Web / Databases ─────────────────────────────────────────
-  'TWEB': 'systems', // Web
-  'TODS': 'systems', // Database Systems
-
-  // ── IEEE/ACM — Theory / Software Engineering ────────────────────────────
+  // ── IEEE/ACM — Theory & Software Engineering ──────────────────────────
   'TSE':    'theory', // Software Engineering
   'TOSEM':  'theory', // Software Engineering and Methodology
   'TOPLAS': 'theory', // Programming Languages and Systems
-  'JACM':   'theory', // Journal of ACM
+  'JACM':   'theory', // Journal of the ACM
 
-  // ── ACM — HCI ────────────────────────────────────────────────────────────
-  'TOCHI': 'systems', // Computer-Human Interaction
-
-  // ── ACM Trans — Graphics ─────────────────────────────────────────────────
-  'TOG':  'graphics', // Graphics
-
-  // ── IEEE — Graphics / Visualization ─────────────────────────────────────
+  // ── IEEE — Graphics & Visualization ──────────────────────────────────
   'TVCG': 'graphics', // Visualization and Computer Graphics
+  'TOG':  'graphics', // ACM Trans on Graphics
 
-  // ── General / Broad scope → systems as default ──────────────────────────
-  'Access': 'systems', // IEEE Access
+  // ── ACM — Data & Databases ────────────────────────────────────────────
+  'TKDE': 'data',    // Knowledge and Data Engineering
+  'TODS': 'data',    // Database Systems
+  'TWEB': 'data',    // Web
+  'TOIS': 'data',    // Information Systems (Information Retrieval)
+
+  // ── ACM — HCI & Multimedia ────────────────────────────────────────────
+  'TOCHI': 'hci',   // Computer-Human Interaction
+  'TMM':   'hci',   // Multimedia (IEEE)
+  'TOMM':  'hci',   // ACM Trans on Multimedia Computing
+
+  // ── General / Broad scope ─────────────────────────────────────────────
+  'Access': 'systems', // IEEE Access (multidisciplinary)
   'CSUR':   'systems', // ACM Computing Surveys
   'CACM':   'systems', // Communications of the ACM
 };
 
+// ─── Helpers ──────────────────────────────────────────────────────────────
+
 /**
- * Given a list of raw area objects from the API (each with an `id` or `code` field),
- * group them into BROAD_AREAS. Returns an array of broad area objects,
- * each with an added `subCodes` array listing all raw codes in that group.
- *
- * @param {Array<{id:string|number, name:string, code?:string}>} rawAreas
+ * Given raw area objects from the API, group them into BROAD_AREAS.
+ * @param {Array<{id?:string|number, code?:string, slug?:string, name?:string}>} rawAreas
  * @returns {Array<{id:string, name:string, icon:string, subCodes:string[]}>}
  */
-function groupAreasByBroadCategory(rawAreas) {
-  // Build a map: broadId → [rawCode, ...]
+export function groupAreasByBroadCategory(rawAreas) {
   const subCodeMap = {};
   BROAD_AREAS.forEach(b => { subCodeMap[b.id] = []; });
 
-  rawAreas.forEach(area => {
+  const areasToProcess = (Array.isArray(rawAreas) && rawAreas.length > 0)
+    ? rawAreas
+    : Object.keys(AREA_TAXONOMY).map(code => ({ code })); // static fallback
+
+  areasToProcess.forEach(area => {
     const rawCode = String(area.code || area.id || area.slug || '');
     const broadId = AREA_TAXONOMY[rawCode];
     if (broadId && subCodeMap[broadId] !== undefined) {
-      subCodeMap[broadId].push(rawCode);
+      if (!subCodeMap[broadId].includes(rawCode)) {
+        subCodeMap[broadId].push(rawCode);
+      }
     }
-    // Unknown codes → skip (don't pollute UI with unmapped codes)
   });
 
-  return BROAD_AREAS.map(b => ({
-    ...b,
-    subCodes: subCodeMap[b.id],
-  }));
+  return BROAD_AREAS
+    .map(b => ({ ...b, subCodes: subCodeMap[b.id] }))
+    .filter(b => b.subCodes.length > 0);
 }
 
 /**
- * Given the set of selected broad area IDs (e.g. Set{'ai', 'vision'}),
- * expand to all raw sub-codes for the API query.
- * e.g. 'ai' → ['4601','4602','4611','TNNLS', ...]
- *
+ * Expand selected broad area IDs to their full list of raw sub-codes.
  * @param {Set<string>} selectedBroadIds
- * @param {Array} groupedAreas - result of groupAreasByBroadCategory()
- * @returns {string[]} flat list of raw codes
+ * @param {Array<{id:string, subCodes:string[]}>} groupedAreas
+ * @returns {string[]}
  */
-function expandToSubCodes(selectedBroadIds, groupedAreas) {
+export function expandToSubCodes(selectedBroadIds, groupedAreas) {
   const codes = [];
   groupedAreas.forEach(broad => {
     if (selectedBroadIds.has(broad.id)) {
-      codes.push(...broad.subCodes);
+      broad.subCodes.forEach(c => { if (!codes.includes(c)) codes.push(c); });
     }
   });
   return codes;
