@@ -114,6 +114,13 @@ export default class FilterWidget {
               </svg>
             </button>
             <button
+              id="btn-clear-filters"
+              class="px-3.5 py-1.5 text-sm font-medium border border-gray-200 text-gray-500 rounded-lg hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors"
+              type="button"
+            >
+              Clear
+            </button>
+            <button
               id="btn-apply-filters"
               class="px-4 py-1.5 text-sm font-semibold text-white bg-teal-600 hover:bg-teal-700 rounded-lg shadow-sm hover:shadow transition-all"
               type="button"
@@ -254,6 +261,21 @@ export default class FilterWidget {
             this.state.endYear = isNaN(ey) ? null : ey;
           }
         }
+        this._dispatch();
+      });
+    }
+
+    // Clear button
+    const clearBtn = this.container.querySelector('#btn-clear-filters');
+    if (clearBtn) {
+      clearBtn.addEventListener('click', () => {
+        this.state.areas.clear();
+        this.state.startYear = this.config.startYear || 2015;
+        this.state.endYear = this.config.endYear || new Date().getFullYear();
+        this.state.isCollapsed = true; // Collapse by default
+
+        this.render();
+        this._attachListeners();
         this._dispatch();
       });
     }

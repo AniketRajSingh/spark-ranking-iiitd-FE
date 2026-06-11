@@ -17,8 +17,9 @@ export default class RankingTableWidget {
     }
   }
 
-  setData(newData) {
+  setData(newData, searchQuery = '') {
     this.data = newData || [];
+    this.searchQuery = searchQuery;
     this.sortBy = 'rank';
     this.sortOrder = 'asc';
     this.render();
@@ -65,13 +66,16 @@ export default class RankingTableWidget {
     if (!this.container) return;
 
     if (!this.data || this.data.length === 0) {
+      const emptyMsg = this.searchQuery
+        ? `No institutions found matching "${escapeHTML(this.searchQuery)}"`
+        : "No ranking data available for the selected filters.";
       this.container.innerHTML = `
         <div class="flex flex-col items-center gap-3 py-12 text-center text-gray-400">
           <svg class="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
               d="M9 17v-2a4 4 0 014-4h0a4 4 0 014 4v2M9 17H5a2 2 0 01-2-2v-1a4 4 0 014-4h1"/>
           </svg>
-          <p class="text-sm">No ranking data available for the selected filters.</p>
+          <p class="text-sm">${emptyMsg}</p>
         </div>`;
       clearBusy(this.container);
       return;

@@ -40,18 +40,21 @@ export default class FacultyProfileWidget {
       </div>`;
 
     try {
-      const data = await fetchJSON(`${this.apiBase}/faculty/${facultyId}/`);
-      if (!data) throw new Error('Empty response');
-      this.render(data);
+      const [data, publications] = await Promise.all([
+        fetchJSON(`${this.apiBase}/faculty/${facultyId}/`),
+        fetchJSON(`${this.apiBase}/publications/`)
+      ]);
+      if (!data) throw new Error('Empty faculty response');
+      this.render(data, publications || []);
     } catch (e) {
       console.error('[SPARK] Faculty fetch failed:', e);
       renderErrorCard(this.container, 'Could not load faculty profile.', () => this.init());
     }
   }
 
-  render(data) {
+  render(data, publications = []) {
     const name  = escapeHTML(data.name || data.full_name || 'Unknown Faculty');
-    const bio   = escapeHTML(data.bio || data.description || 'No biography available.');
+    const bio   = escapeHTML(data.bio || data.description || '');
     const inst  = escapeHTML(
       typeof data.institution === 'object'
         ? (data.institution?.name || '')
@@ -63,8 +66,39 @@ export default class FacultyProfileWidget {
     const prefix = isSubpage ? '../' : './';
 
     // External links
-    const dblpUrl    = data.dblp_url    || data.dblp_link    || null;
+    let dblpUrl = data.dblp_url || data.dblp_link || null;
+    if (!dblpUrl && data.dblp_pid) {
+      dblpUrl = `https://dblp.org/pid/${data.dblp_pid}.html`;
+    }
+
     const scholarUrl = data.scholar_url || data.scholar_link || data.google_scholar || null;
+    
+    // Guess IRINS URL
+    let irinsUrl = null;
+    if (data.irins_id) {
+      let sub = 'iiitd'; // default fallback for IIIT Delhi
+      if (data.institution && data.institution.website) {
+        try {
+          const host = new URL(data.institution.website).hostname;
+          const parts = host.split('.');
+          const found = parts.find(p => p !== 'www' && p !== 'edu' && p !== 'ac' && p !== 'res' && p !== 'in' && p !== 'org');
+          if (found) sub = found;
+        } catch (e) {}
+      }
+      irinsUrl = `https://${sub}.irins.org/profile/${data.irins_id}`;
+    }
+
+    const orcidUrl = data.orcid ? `https://orcid.org/${data.orcid}` : null;
+    const homepageUrl = data.homepage || null;
+
+    // Biography rendering (construct dynamically if missing)
+    let finalBio = bio;
+    if (!finalBio) {
+      const title = data.designation || 'Faculty Member';
+      const dept = data.department || 'Computer Science & Engineering';
+      const instName = inst || 'SPARK-affiliated institution';
+      finalBio = `Dr. ${name} is a ${title} in the ${dept} department at ${instName}. They specialize in computer science research and have contributed fractional authorship credits across prestigious CORE A*/A publication venues.`;
+    }
 
     // Research area chips
     const areas = Array.isArray(data.areas) ? data.areas
@@ -76,29 +110,60 @@ export default class FacultyProfileWidget {
 
     // Score breakdown
     const totalScore = data.score != null ? Number(data.score).toFixed(2) : null;
-    const aStarPts   = data.a_star_score  != null ? Number(data.a_star_score).toFixed(2)  : null;
-    const aPts       = data.a_score       != null ? Number(data.a_score).toFixed(2)        : null;
+    
+    // Build publication map for fast lookup
+    const pubMap = new Map();
+    publications.forEach(p => pubMap.set(p.id, p));
 
-    // Publications list
-    let pubs = data.publications || data.pubs || [];
-    if (!pubs.length && Array.isArray(data.authorships)) {
-      pubs = data.authorships.map(a => {
-        const p = a.publication || a;
-        return {
-          title: p.title || '',
-          year: p.year || '',
-          conference: p.conference || p.venue || '',
-          core_rank: p.core_rank || p.rank || '',
-        };
-      }).filter(p => p.title);
+    // Map authorships to publications
+    let pubs = [];
+    if (Array.isArray(data.authorships)) {
+      pubs = data.authorships.map(auth => {
+        const pub = pubMap.get(auth.publication_id);
+        if (pub) {
+          return {
+            id: pub.id,
+            title: pub.title || '',
+            year: pub.year || '',
+            conference: pub.conference || pub.venue || '',
+            core_rank: pub.core_rank || (pub.conference && pub.conference.core_rank) || '',
+            credit: auth.credit || 0
+          };
+        }
+        return null;
+      }).filter(p => p !== null);
     }
+
+    // Sort publications by year descending, then title ascending
+    pubs.sort((a, b) => {
+      const yrDiff = (b.year || 0) - (a.year || 0);
+      if (yrDiff !== 0) return yrDiff;
+      return a.title.localeCompare(b.title);
+    });
+
+    // Score breakdown by A* and A (calculated dynamically from matched publications!)
+    let calculatedAStarScore = 0;
+    let calculatedAScore = 0;
+    pubs.forEach(p => {
+      const weight = p.core_rank === 'A*' ? 4 : (p.core_rank === 'A' ? 2 : 0);
+      const contribution = p.credit * weight;
+      if (p.core_rank === 'A*') {
+        calculatedAStarScore += contribution;
+      } else if (p.core_rank === 'A') {
+        calculatedAScore += contribution;
+      }
+    });
+
+    const aStarPts = calculatedAStarScore.toFixed(2);
+    const aPts = calculatedAScore.toFixed(2);
 
     const pubsHTML = pubs.length
       ? pubs.map(p => {
           const title = escapeHTML(p.title || '');
           const year  = escapeHTML(p.year  || '');
           const conf  = escapeHTML(p.conference?.acronym || p.conference || p.venue || '');
-          const core  = escapeHTML(p.core_rank || (p.conference && p.conference.core_rank) || '');
+          const core  = escapeHTML(p.core_rank || '');
+          const creditText = p.credit ? ` · <span class="text-teal-600 font-semibold">${Number(p.credit).toFixed(2)} credit</span>` : '';
           const coreBadge = core
             ? `<span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold flex-shrink-0
                 ${core === 'A*' ? 'bg-yellow-100 text-yellow-800' : 'bg-blue-100 text-blue-800'}">
@@ -106,13 +171,13 @@ export default class FacultyProfileWidget {
               </span>`
             : '';
           return `
-            <li class="py-3.5 border-b border-gray-100 last:border-0">
+            <li class="py-3.5 border-b border-gray-100 last:border-0 font-sans">
               <div class="flex items-start gap-2.5">
                 ${coreBadge}
                 <div class="flex-1 min-w-0">
                   <p class="text-sm font-semibold text-gray-800 leading-snug">${title}</p>
                   <p class="text-xs text-gray-400 mt-1">
-                    ${conf ? `<span class="font-semibold text-teal-600">${conf}</span> · ` : ''}${year}
+                    ${conf ? `<span class="font-semibold text-teal-600">${conf}</span> · ` : ''}${year}${creditText}
                   </p>
                 </div>
               </div>
@@ -124,32 +189,59 @@ export default class FacultyProfileWidget {
       <!-- Profile header -->
       <div class="card p-6 mb-6">
         <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-          <div class="flex-1">
+          <div class="flex-1 col-span-3">
             <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 leading-tight">${name}</h1>
-            ${inst ? `<a href="${prefix}pages/institution.html?id=${escapeHTML(instId)}"
-              class="text-sm font-semibold text-teal-600 hover:text-teal-800 hover:underline mt-1.5 inline-block">${inst}</a>` : ''}
+            
+            <div class="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm font-semibold text-teal-600 mt-1.5">
+              ${data.designation ? `<span>${escapeHTML(data.designation)}</span>` : ''}
+              ${data.designation && data.department ? `<span>·</span>` : ''}
+              ${data.department ? `<span>${escapeHTML(data.department)}</span>` : ''}
+              ${(data.designation || data.department) && inst ? `<span>·</span>` : ''}
+              ${inst ? `<a href="${prefix}pages/institution.html?id=${escapeHTML(instId)}" class="hover:text-teal-800 hover:underline">${inst}</a>` : ''}
+            </div>
 
             <!-- Area chips -->
             ${areaChips ? `<div class="flex flex-wrap gap-2 mt-4">${areaChips}</div>` : ''}
 
             <!-- Bio -->
-            ${bio ? `<p class="mt-4 text-sm sm:text-base text-gray-600 leading-relaxed">${bio}</p>` : ''}
+            <p class="mt-4 text-sm sm:text-base text-gray-600 leading-relaxed">${finalBio}</p>
 
             <!-- External links -->
             <div class="flex items-center gap-3 mt-5 flex-wrap">
+              ${homepageUrl ? `<a href="${escapeHTML(homepageUrl)}" target="_blank" rel="noopener noreferrer"
+                class="inline-flex items-center gap-1.5 text-xs font-semibold text-gray-600 hover:text-teal-600 border border-gray-200 hover:border-teal-400 rounded-lg px-3 py-2 transition-colors duration-150 bg-white">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
+                </svg>
+                Faculty Homepage
+              </a>` : ''}
               ${dblpUrl ? `<a href="${escapeHTML(dblpUrl)}" target="_blank" rel="noopener noreferrer"
-                class="inline-flex items-center gap-1.5 text-xs font-semibold text-gray-600 hover:text-teal-600 border border-gray-200 hover:border-teal-400 rounded-lg px-3 py-2 transition-colors duration-150">
+                class="inline-flex items-center gap-1.5 text-xs font-semibold text-gray-600 hover:text-teal-600 border border-gray-200 hover:border-teal-400 rounded-lg px-3 py-2 transition-colors duration-150 bg-white">
                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
                 </svg>
                 DBLP Profile
               </a>` : ''}
               ${scholarUrl ? `<a href="${escapeHTML(scholarUrl)}" target="_blank" rel="noopener noreferrer"
-                class="inline-flex items-center gap-1.5 text-xs font-semibold text-gray-600 hover:text-teal-600 border border-gray-200 hover:border-teal-400 rounded-lg px-3 py-2 transition-colors duration-150">
+                class="inline-flex items-center gap-1.5 text-xs font-semibold text-gray-600 hover:text-teal-600 border border-gray-200 hover:border-teal-400 rounded-lg px-3 py-2 transition-colors duration-150 bg-white">
                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
                 </svg>
                 Google Scholar
+              </a>` : ''}
+              ${irinsUrl ? `<a href="${escapeHTML(irinsUrl)}" target="_blank" rel="noopener noreferrer"
+                class="inline-flex items-center gap-1.5 text-xs font-semibold text-gray-600 hover:text-teal-600 border border-gray-200 hover:border-teal-400 rounded-lg px-3 py-2 transition-colors duration-150 bg-white">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
+                </svg>
+                IRINS Profile
+              </a>` : ''}
+              ${orcidUrl ? `<a href="${escapeHTML(orcidUrl)}" target="_blank" rel="noopener noreferrer"
+                class="inline-flex items-center gap-1.5 text-xs font-semibold text-gray-600 hover:text-teal-600 border border-gray-200 hover:border-teal-400 rounded-lg px-3 py-2 transition-colors duration-150 bg-white">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+                </svg>
+                ORCID Profile
               </a>` : ''}
             </div>
           </div>
@@ -162,8 +254,8 @@ export default class FacultyProfileWidget {
                 <span class="text-2xl font-black text-teal-600 block mt-0.5">${totalScore}</span>
               </div>
               <div class="text-[11px] text-gray-400 space-y-0.5 sm:text-right mt-1 font-medium">
-                ${aStarPts ? `<p>A* papers: <strong class="text-yellow-700 font-semibold">${aStarPts} pts</strong></p>` : ''}
-                ${aPts     ? `<p>A papers: <strong class="text-blue-700 font-semibold">${aPts} pts</strong></p>` : ''}
+                ${calculatedAStarScore > 0 ? `<p>A* papers: <strong class="text-yellow-700 font-semibold">${aStarPts} pts</strong></p>` : ''}
+                ${calculatedAScore > 0 ? `<p>A papers: <strong class="text-blue-700 font-semibold">${aPts} pts</strong></p>` : ''}
               </div>
             </div>` : ''}
         </div>
@@ -172,7 +264,7 @@ export default class FacultyProfileWidget {
       <!-- Publications -->
       <div class="card p-6">
         <div class="flex items-center justify-between border-b border-gray-100 pb-3 mb-3">
-          <h2 class="text-lg font-bold text-gray-800">Publications</h2>
+          <h2 class="text-lg font-bold text-gray-800 font-sans">Publications</h2>
           <span class="text-xs font-semibold text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">${pubs.length} papers</span>
         </div>
         <ul class="divide-y divide-gray-100">${pubsHTML}</ul>

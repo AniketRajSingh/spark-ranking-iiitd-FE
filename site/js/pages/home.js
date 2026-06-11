@@ -4,6 +4,7 @@ import { renderSkeleton, renderErrorCard } from '../utils/errorCard.js';
 import { groupAreasByBroadCategory, expandToSubCodes } from '../utils/areaTaxonomy.js';
 import FilterWidget from '../widgets/Filter.js';
 import RankingTableWidget from '../widgets/RankingTable.js';
+import SearchBarWidget from '../widgets/SearchBar.js';
 
 document.addEventListener('DOMContentLoaded', async () => {
   const apiBase = (window.SPARK_CONFIG && window.SPARK_CONFIG.API_BASE) || null;
@@ -98,8 +99,23 @@ document.addEventListener('DOMContentLoaded', async () => {
       const data = await fetchJSON(`${apiBase}/rankings/?${params}`);
       if (!data) throw new Error('Could not fetch rankings data');
       const normalised = normaliseRankings(data);
-      rankingTableWidget.setData(normalised);
-      setResultsCount(normalised.length);
+
+      // Filter out 0 scores only if filters are active (non-default state)
+      const currentYear = new Date().getFullYear();
+      const isDefault = activeFilters.startYear === 2015 &&
+                        activeFilters.endYear === currentYear &&
+                        (!activeFilters.areas || activeFilters.areas.size === 0);
+
+      let finalData = normalised;
+      if (!isDefault) {
+        finalData = normalised.filter(item => {
+          const scoreNum = parseFloat(item.score);
+          return !isNaN(scoreNum) && scoreNum > 0;
+        });
+      }
+
+      rankingTableWidget.setData(finalData);
+      setResultsCount(finalData.length);
     } catch (e) {
       console.error('[SPARK] /rankings/ error:', e.message);
       renderErrorCard(rankingTableEl,
@@ -113,51 +129,37 @@ document.addEventListener('DOMContentLoaded', async () => {
   updateRankings();
 
   // ── Search bar ────────────────────────────────────────────────────────
-  const searchInput   = document.getElementById('search-input');
-  const searchClear   = document.getElementById('search-clear');
-  const searchWrapper = document.getElementById('search-wrapper');
-  let searchDebounce  = null;
-  let isSearchMode    = false;
-
-  const doSearch = async (q) => {
-    if (!q.trim()) {
-      isSearchMode = false;
-      if (searchWrapper) searchWrapper.classList.remove('has-value');
+  const performSearch = async (q) => {
+    if (!q) {
       updateRankings();
       return;
     }
-    isSearchMode = true;
-    if (searchWrapper) searchWrapper.classList.add('has-value');
     renderSkeleton(rankingTableEl);
     setResultsCount(0);
     try {
-      const payload = await fetchJSON(`${apiBase}/institutions/?search=${encodeURIComponent(q.trim())}`);
+      const payload = await fetchJSON(`${apiBase}/institutions/?search=${encodeURIComponent(q)}`);
       if (!payload) throw new Error('Search failed');
       const items = Array.isArray(payload) ? payload : (payload.results || []);
-      const data = items.map((inst, idx) => ({
+      
+      // Client-side fallback filtering to guarantee correct results even if API ignores search param
+      const filtered = items.filter(inst => 
+        (inst.name || inst.institution_name || '').toLowerCase().includes(q.toLowerCase())
+      );
+      
+      const data = filtered.map((inst, idx) => ({
         rank: idx + 1,
         institution: { id: inst.id, name: inst.name || inst.institution_name || '' },
         score: inst.score || inst.total_score || '—',
       }));
-      rankingTableWidget.setData(data);
+      rankingTableWidget.setData(data, q);
       setResultsCount(data.length);
     } catch (e) {
-      renderErrorCard(rankingTableEl, 'Search failed. Try again.', () => doSearch(q));
+      renderErrorCard(rankingTableEl, 'Search failed. Try again.', () => performSearch(q));
     }
   };
 
-  if (searchInput) {
-    searchInput.addEventListener('input', e => {
-      clearTimeout(searchDebounce);
-      searchDebounce = setTimeout(() => doSearch(e.target.value), 300);
-    });
-  }
-  if (searchClear) {
-    searchClear.addEventListener('click', () => {
-      if (searchInput) searchInput.value = '';
-      if (searchWrapper) searchWrapper.classList.remove('has-value');
-      isSearchMode = false;
-      updateRankings();
-    });
-  }
+  new SearchBarWidget('search-bar-container', {
+    placeholder: 'Search institutions…',
+    onSearch: performSearch
+  });
 });

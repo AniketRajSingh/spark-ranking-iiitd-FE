@@ -4,6 +4,7 @@ import { renderSkeleton, renderErrorCard } from '../utils/errorCard.js';
 import { groupAreasByBroadCategory } from '../utils/areaTaxonomy.js';
 import FilterWidget from '../widgets/Filter.js';
 import ConferenceListWidget from '../widgets/ConferenceList.js';
+import SearchBarWidget from '../widgets/SearchBar.js';
 
 document.addEventListener('DOMContentLoaded', async () => {
   const apiBase = (window.SPARK_CONFIG && window.SPARK_CONFIG.API_BASE) || null;
@@ -40,6 +41,23 @@ document.addEventListener('DOMContentLoaded', async () => {
       null
     );
     return;
+  }
+
+  // ── Search & Rank Filters Integration ────────────────────────────────
+  const performSearch = (q) => {
+    conferenceListWidget.setSearch(q);
+  };
+
+  new SearchBarWidget('search-bar-container', {
+    placeholder: 'Search venues by acronym or name…',
+    onSearch: performSearch
+  });
+
+  const rankFilter = document.getElementById('rank-filter');
+  if (rankFilter) {
+    rankFilter.addEventListener('change', e => {
+      conferenceListWidget.setRankFilter(e.target.value);
+    });
   }
 
   const fetchAndRender = async () => {

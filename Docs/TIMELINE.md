@@ -14,8 +14,13 @@ This document tracks all design modifications, architectural shifts, and develop
 
 ### 2026-06-11
 - **Type**: `[Local Uncommitted Changes]` (Current Active Overhaul)
-- **Summary**: Comprehensive refactoring to ES6 modules, dynamic relative link resolution, Chart.js integrations, addition of elite sub-pages, and responsive layout fine-tuning.
+- **Summary**: Comprehensive refactoring to ES6 modules, dynamic relative link resolution, Chart.js integrations, addition of elite sub-pages, responsive layout fine-tuning, and client-side dynamic faculty score calculations.
 - **Details**:
+  - **Client-Side Dynamic Faculty Score Calculations**:
+    - Resolved issues where the backend `/api/faculty/` endpoint returned static total scores regardless of active year range or research area filters.
+    - Loaded the `/api/publications/` dataset on page initialisation and computed dynamically-filtered fractional authorship credits (scaled with CORE prestige weights: A*=4, A=2) on the client side.
+    - Configured the faculty list to conditionally display 0-score records by default (when no filters are applied) and when searching, but exclude them when custom year or area filters are active.
+    - Fixed the Filter panel "Clear" button to completely reset year fields and checked boxes, collapse the panel, and trigger the filter change dispatch immediately.
   - **Architectural Overhaul (ES Modules)**:
     - Transformed all utility scripts under `site/js/utils/` (`sanitize.js`, `errorCard.js`, `fetchJSON.js`, `areaTaxonomy.js`) to exportable ES modules.
     - Converted all widgets (`Filter.js`, `RankingTable.js`, `FacultyList.js`, `InstitutionProfile.js`, `FacultyProfile.js`) to ES6 class modules.
@@ -29,14 +34,16 @@ This document tracks all design modifications, architectural shifts, and develop
   - **Premium UI / UX Design System**:
     - Overhauled `faculty.html`, `institution.html`, `faculty-profile.html`, and `methodology.html` to reference compiled offline `css/tailwind.css` and use the matching glassmorphism typography and dark-teal design styles.
     - Integrated standard SEO metadata blocks, descriptive page titles, and favicon anchors across all pages.
-    - Styled the homepage search input in `index.html` with premium Tailwind CSS utility classes to avoid overlaps with the search and clear icons.
+    - Created a reusable `SearchBarWidget` class (`widgets/SearchBar.js`) to centralize input markup, clear button interactions, and debounced callback queries, which resolved native vs custom double-clear button redundancies on Chrome/Safari.
     - Injected dynamic responsive CSS utilities (`sm:hidden`, `sm:flex`, `sm:block`, etc.) within `navbar.js` to ensure the mobile dropdown toggle menu and desktop navigation layout display correctly across all viewports, overcoming compiled Tailwind CSS purge omissions.
     - Moved the filter panel from the right sidebar to a horizontal, collapsible layout at the top of all pages (`index.html`, `faculty.html`, `conference.html`), expanding the list cards to full width.
     - Redesigned the filter panel to display only the Publication Year Range by default, adding a toggle to expand/collapse Research Areas, and an "Apply Filters" button to execute updates.
     - Handled checkbox visual active states by toggling custom `.filter-active` classes in JS and injecting the required styles dynamically, bypasssing purged tailwind class bugs.
     - Switched the Faculty rankings page to fetch from `/api/faculty/` directly instead of nested institution ranking records, resolving display restrictions to show the full list of faculty members and their true leaderboard rankings.
     - Added a search input bar to the Faculty leaderboard (`faculty.html`) to allow searching faculty members by name via a debounced API query.
-    - Mapped nested Django `authorships` to publications in `FacultyProfile.js` to fix the empty publications lists and zero paper counts on the faculty profile page.
+    - Overhauled `FacultyProfile.js` to fetch `/api/faculty/{id}/` and `/api/publications/` in parallel. Mapped numeric authorship publication IDs to the publications list to dynamically display verified paper titles, years, venue acronyms, and fractional authorship credit tags, fixing the empty publications lists.
+    - Added dynamic biography generation in `FacultyProfile.js` that constructs a professional descriptive paragraph utilizing designation, department, and institution name when the bio field is null in the API.
+    - Integrated direct URL links for Faculty Homepages, DBLP Profiles (resolving `dblp_pid`), Google Scholar, IRINS Profiles (resolving `irins_id` with website subdomain guessing), and ORCID Profiles.
   - **New Features & Pages**:
     - Created static About page (`about.html`).
     - Created Conferences directory (`conference.html` and `ConferenceList.js` widget) to list CORE A*/A venues with area-wise category filter bindings.
@@ -47,6 +54,19 @@ This document tracks all design modifications, architectural shifts, and develop
     - Developed `requirements_for_BE.txt` to serve as a specifications contract for backend developers.
     - Updated `requirements_for_BE.txt` to formally specify the new direct `/api/faculty/` leaderboard/search API endpoints and document support for Django through-model `authorships` nested schema mapping.
     - Normalized the naming conventions, renaming all occurrences of "ICSRank" to "SPARK" universally.
+  - **Search Robustness & Custom Empty States**:
+    - Integrated client-side fallback filtering in page initializers (`home.js`, `faculty.js`) to guarantee correct query results even if the backend search endpoints ignore search query parameters.
+    - Updated `RankingTableWidget` (`RankingTable.js`) and `FacultyListWidget` (`FacultyList.js`) to cache and track the active `searchQuery`.
+    - Added specific, clear empty states ("No institutions found matching 'IIT Kanpur'" or similar search query contexts) to replace confusing "No ranking data available for the selected filters." messages when searches yield zero results.
+    - Added a keydown 'Enter' listener to `SearchBarWidget` (`SearchBar.js`) to allow immediate search query executions, bypassing the default 300ms debounce.
+    - Updated `RankingTableWidget` (`RankingTable.js`) and `FacultyListWidget` (`FacultyList.js`) to exclude institutions and faculty members with 0 or negative points/scores when rendering, but bypass this filter if a search query is active (resolving search failures for autocomplete results lacking scores).
+  - **Research Venues Enhancements**:
+    - Integrated `SearchBarWidget` and added a CORE Rank selector dropdown to [conference.html](file:///Users/aniketrajsingh/Documents/GitHub/spark-ranking-iiitd-FE/site/pages/conference.html).
+    - Updated [ConferenceList.js](file:///Users/aniketrajsingh/Documents/GitHub/spark-ranking-iiitd-FE/site/js/widgets/ConferenceList.js) to filter lists based on search queries, CORE rank values, and FoR category codes.
+    - Implemented a detailed publication listing modal popup triggered by clicking any conference row, loading and caching all papers fetched from `/api/publications/` client-side.
+
+
+
 
 ### 2026-06-10
 - **Type**: Commit `53ee12f`

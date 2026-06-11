@@ -5,11 +5,12 @@ import { escapeHTML } from '../utils/sanitize.js';
 import { clearBusy } from '../utils/errorCard.js';
 
 export default class FacultyListWidget {
-  constructor(containerId, filters, serverTopData = null) {
+  constructor(containerId, filters, serverTopData = null, searchQuery = '') {
     this.containerId   = containerId;
     this.container     = document.getElementById(containerId);
     this.filters       = filters;
     this.serverTopData = serverTopData;
+    this.searchQuery   = searchQuery;
     this.pageSize      = 20;
     this.page          = 1;
     if (!this.container) return;
@@ -64,14 +65,20 @@ export default class FacultyListWidget {
           instRank,
         };
       });
-    } else {
+    }
+
+
+    if (flat.length === 0) {
+      const emptyMsg = this.searchQuery
+        ? `No faculty found matching "${escapeHTML(this.searchQuery)}"`
+        : "No faculty data available for the selected filters.";
       container.innerHTML = `
         <div class="flex flex-col items-center gap-3 py-12 text-center text-gray-400">
           <svg class="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
               d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0"/>
           </svg>
-          <p class="text-sm">No faculty data available for the selected filters.</p>
+          <p class="text-sm">${emptyMsg}</p>
         </div>`;
       clearBusy(container);
       return;
