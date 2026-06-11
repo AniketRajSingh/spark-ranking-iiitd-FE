@@ -164,12 +164,26 @@ export default class FacultyProfileWidget {
           const conf  = escapeHTML(p.conference?.acronym || p.conference || p.venue || '');
           const core  = escapeHTML(p.core_rank || '');
           const creditText = p.credit ? ` · <span class="text-teal-600 font-semibold">${Number(p.credit).toFixed(2)} credit</span>` : '';
-          const coreBadge = core
-            ? `<span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold flex-shrink-0
+          let coreBadge = '';
+          if (core && core !== 'Unknown') {
+            coreBadge = `<span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold flex-shrink-0
                 ${core === 'A*' ? 'bg-yellow-100 text-yellow-800' : 'bg-blue-100 text-blue-800'}">
                 ${core}
-              </span>`
-            : '';
+              </span>`;
+          } else if (conf) {
+            const fullName = escapeHTML(p.conference?.full_name || '');
+            const isTrans = conf.toLowerCase().includes('trans') || fullName.toLowerCase().includes('transactions');
+            const isJournal = conf.toLowerCase().includes('journal') || conf.toLowerCase().includes('commu') || fullName.toLowerCase().includes('letters');
+            if (isTrans) {
+              coreBadge = `<span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold flex-shrink-0 bg-slate-100 text-slate-700">
+                            Transaction
+                          </span>`;
+            } else if (isJournal) {
+              coreBadge = `<span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold flex-shrink-0 bg-slate-100 text-slate-700">
+                            Journal
+                          </span>`;
+            }
+          }
           return `
             <li class="py-3.5 border-b border-gray-100 last:border-0 font-sans">
               <div class="flex items-start gap-2.5">

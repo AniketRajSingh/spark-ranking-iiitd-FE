@@ -41,7 +41,8 @@ This document tracks all design modifications, architectural shifts, and develop
     - Handled checkbox visual active states by toggling custom `.filter-active` classes in JS and injecting the required styles dynamically, bypasssing purged tailwind class bugs.
     - Switched the Faculty rankings page to fetch from `/api/faculty/` directly instead of nested institution ranking records, resolving display restrictions to show the full list of faculty members and their true leaderboard rankings.
     - Added a search input bar to the Faculty leaderboard (`faculty.html`) to allow searching faculty members by name via a debounced API query.
-    - Overhauled `FacultyProfile.js` to fetch `/api/faculty/{id}/` and `/api/publications/` in parallel. Mapped numeric authorship publication IDs to the publications list to dynamically display verified paper titles, years, venue acronyms, and fractional authorship credit tags, fixing the empty publications lists.
+    - Overhauled `FacultyProfile.js` to fetch `/api/faculty/{id}/` and `/api/publications/` in parallel. Mapped numeric authorship publication IDs to the publications list to dynamically display verified paper details.
+    - Replaced confusing `"Unknown"` CORE rank badges for journals and transactions in `FacultyProfile.js` and `InstitutionProfile.js` with semantic slate `"Transaction"` or `"Journal"` badges (based on name patterns), while hiding badges for unranked conferences to preserve premium layout aesthetics.
     - Added dynamic biography generation in `FacultyProfile.js` that constructs a professional descriptive paragraph utilizing designation, department, and institution name when the bio field is null in the API.
     - Integrated direct URL links for Faculty Homepages, DBLP Profiles (resolving `dblp_pid`), Google Scholar, IRINS Profiles (resolving `irins_id` with website subdomain guessing), and ORCID Profiles.
   - **New Features & Pages**:
