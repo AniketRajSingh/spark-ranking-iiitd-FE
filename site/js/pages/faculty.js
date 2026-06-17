@@ -53,113 +53,64 @@ document.addEventListener('DOMContentLoaded', async () => {
     return;
   }
 
-  let rawFaculty = [];
-  let rawPublications = [];
   let facultyList = null;
   let currentSearchQuery = '';
 
-  const computeAndRender = () => {
-    if (rawFaculty.length === 0) return;
-
-    const filters = filterWidget.getState();
-    const currentYear = new Date().getFullYear();
-    const isDefault = filters.startYear === 2015 &&
-                      filters.endYear === currentYear &&
-                      (!filters.areas || filters.areas.size === 0);
-
-    // Build publication map for fast lookup
-    const pubMap = new Map();
-    rawPublications.forEach(p => pubMap.set(p.id, p));
-
-    // Calculate dynamic scores based on filters
-    let calculatedFaculty = rawFaculty.map(f => {
-      let score = 0;
-      (f.authorships || []).forEach(auth => {
-        const pub = pubMap.get(auth.publication_id);
-        if (pub) {
-          // Check year
-          const yearMatch = pub.year >= filters.startYear && pub.year <= filters.endYear;
-          // Check area
-          const rawCode = pub.conference ? pub.conference.area : null;
-          const broadArea = AREA_TAXONOMY[rawCode];
-          const areaMatch = !filters.areas || filters.areas.size === 0 || filters.areas.has(broadArea);
-
-          if (yearMatch && areaMatch) {
-            // Get weight
-            let weight = 0;
-            const rank = pub.core_rank || (pub.conference && pub.conference.core_rank);
-            if (rank === 'A*') {
-              weight = 4;
-            } else if (rank === 'A') {
-              weight = 2;
-            }
-            score += (auth.credit || 0) * weight;
-          }
-        }
-      });
-      return {
-        ...f,
-        score: isDefault ? (f.score || 0) : score
-      };
-    });
-
-    // Filter by search query if any
-    if (currentSearchQuery) {
-      const q = currentSearchQuery.toLowerCase();
-      calculatedFaculty = calculatedFaculty.filter(f =>
-        (f.name || f.faculty_name || '').toLowerCase().includes(q)
-      );
-    }
-
-    // Filter out 0 scores ONLY if NOT default state
-    if (!isDefault) {
-      calculatedFaculty = calculatedFaculty.filter(f => (f.score || 0) > 0);
-    }
-
-    if (facultyList) {
-      facultyList.serverTopData = calculatedFaculty;
-      facultyList.filters = filters;
-      facultyList.searchQuery = currentSearchQuery;
-      facultyList.render();
-    } else {
-      facultyList = new FacultyListWidget('faculty-listing', filters, calculatedFaculty, currentSearchQuery);
-    }
-  };
-
-  const loadData = async () => {
+  const loadAndRender = async () => {
     renderSkeleton(listContainer);
     try {
-      const [facultyData, publicationsData] = await Promise.all([
-        fetchJSON(`${apiBase}/faculty/`),
-        fetchJSON(`${apiBase}/publications/`)
-      ]);
-      if (!facultyData || !publicationsData) {
-        throw new Error('Failed to load initial data');
+      const filters = filterWidget.getState();
+      const params = buildFilterParams(filters, groupedAreas);
+      if (currentSearchQuery) {
+        params.set('search', currentSearchQuery);
       }
-      rawFaculty = Array.isArray(facultyData) ? facultyData : (facultyData.results || facultyData.faculty || []);
-      rawPublications = Array.isArray(publicationsData) ? publicationsData : (publicationsData.results || []);
 
-      computeAndRender();
+      const facultyData = await fetchJSON(`${apiBase}/faculty/?${params.toString()}`);
+      if (!facultyData) {
+        throw new Error('Failed to load faculty data');
+      }
+
+      let facultyItems = Array.isArray(facultyData) ? facultyData : (facultyData.results || facultyData.faculty || []);
+
+      // Filter out zero scores if filters are active (non-default state)
+      const currentYear = new Date().getFullYear();
+      const isDefault = filters.startYear === 2015 &&
+                        filters.endYear === currentYear &&
+                        (!filters.areas || filters.areas.size === 0);
+
+      if (!isDefault) {
+        facultyItems = facultyItems.filter(f => (f.score || 0) > 0);
+      }
+
+      if (facultyList) {
+        facultyList.serverTopData = facultyItems;
+        facultyList.filters = filters;
+        facultyList.searchQuery = currentSearchQuery;
+        facultyList.page = 1; // Reset to page 1 on filter/search change
+        facultyList.render();
+      } else {
+        facultyList = new FacultyListWidget('faculty-listing', filters, facultyItems, currentSearchQuery);
+      }
     } catch (e) {
-      console.error('[SPARK] Initial load error:', e.message);
+      console.error('[SPARK] Faculty load error:', e.message);
       renderErrorCard(listContainer,
-        'Could not load faculty data or publications.',
-        () => loadData()
+        'Could not load faculty data.',
+        () => loadAndRender()
       );
     }
   };
 
   document.addEventListener('filtersChanged', e => {
-    computeAndRender();
+    loadAndRender();
   });
 
   new SearchBarWidget('search-bar-container', {
     placeholder: 'Search faculty by name…',
     onSearch: (q) => {
       currentSearchQuery = q;
-      computeAndRender();
+      loadAndRender();
     }
   });
 
-  loadData();
+  loadAndRender();
 });

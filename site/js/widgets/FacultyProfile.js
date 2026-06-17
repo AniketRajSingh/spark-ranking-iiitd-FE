@@ -4,6 +4,7 @@
 import fetchJSON from '../utils/fetchJSON.js';
 import { escapeHTML } from '../utils/sanitize.js';
 import { renderErrorCard } from '../utils/errorCard.js';
+import { AREA_TAXONOMY, BROAD_AREAS } from '../utils/areaTaxonomy.js';
 
 export default class FacultyProfileWidget {
   constructor(containerSelector, apiBase) {
@@ -40,19 +41,24 @@ export default class FacultyProfileWidget {
       </div>`;
 
     try {
-      const [data, publications] = await Promise.all([
+      const [data, facultyList] = await Promise.all([
         fetchJSON(`${this.apiBase}/faculty/${facultyId}/`),
-        fetchJSON(`${this.apiBase}/publications/`)
+        fetchJSON(`${this.apiBase}/faculty/`)
       ]);
       if (!data) throw new Error('Empty faculty response');
-      this.render(data, publications || []);
+
+      const list = Array.isArray(facultyList) ? facultyList : (facultyList?.results || []);
+      const matched = list.find(f => String(f.id) === String(facultyId));
+      const mergedData = { ...matched, ...data };
+
+      this.render(mergedData);
     } catch (e) {
       console.error('[SPARK] Faculty fetch failed:', e);
       renderErrorCard(this.container, 'Could not load faculty profile.', () => this.init());
     }
   }
 
-  render(data, publications = []) {
+  render(data) {
     const name  = escapeHTML(data.name || data.full_name || 'Unknown Faculty');
     const bio   = escapeHTML(data.bio || data.description || '');
     const inst  = escapeHTML(
@@ -100,33 +106,52 @@ export default class FacultyProfileWidget {
       finalBio = `Dr. ${name} is a ${title} in the ${dept} department at ${instName}. They specialize in computer science research and have contributed fractional authorship credits across prestigious CORE A*/A publication venues.`;
     }
 
-    // Research area chips
+    // Research area chips mapped to broad human-readable names
     const areas = Array.isArray(data.areas) ? data.areas
       : (data.research_areas || data.area ? [data.area] : []);
-    const areaChips = areas.map(a => {
-      const label = typeof a === 'object' ? (a.name || a.code || String(a)) : String(a);
-      return `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-teal-50 text-teal-700 border border-teal-100">${escapeHTML(label)}</span>`;
+    
+    // Set to avoid duplicates if multiple sub-codes map to same broad category
+    const broadNamesSet = new Set();
+    areas.forEach(a => {
+      const rawCode = typeof a === 'object' ? (a.code || a.name || String(a)) : String(a);
+      const broadId = AREA_TAXONOMY[rawCode] || rawCode;
+      const areaInfo = BROAD_AREAS.find(b => b.id === broadId);
+      const name = areaInfo ? areaInfo.name : broadId;
+      if (name) broadNamesSet.add(name);
+    });
+
+    const areaChips = Array.from(broadNamesSet).map(name => {
+      return `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-teal-50 text-teal-700 border border-teal-100">${escapeHTML(name)}</span>`;
     }).join('');
 
     // Score breakdown
     const totalScore = data.score != null ? Number(data.score).toFixed(2) : null;
     
-    // Build publication map for fast lookup
-    const pubMap = new Map();
-    publications.forEach(p => pubMap.set(p.id, p));
-
-    // Map authorships to publications
+    // Map publications or authorships from the faculty profile data
     let pubs = [];
-    if (Array.isArray(data.authorships)) {
+    if (Array.isArray(data.publications)) {
+      pubs = data.publications.map(p => {
+        const confVal = p.conference || p.venue || '';
+        return {
+          id: p.id || '',
+          title: p.title || '',
+          year: p.year || '',
+          conference: confVal,
+          core_rank: p.core_rank || (typeof confVal === 'object' && confVal !== null ? confVal.core_rank : '') || '',
+          credit: p.credit || 0
+        };
+      });
+    } else if (Array.isArray(data.authorships)) {
       pubs = data.authorships.map(auth => {
-        const pub = pubMap.get(auth.publication_id);
+        const pub = auth.publication;
         if (pub) {
+          const confVal = pub.conference || pub.venue || '';
           return {
-            id: pub.id,
+            id: pub.id || '',
             title: pub.title || '',
             year: pub.year || '',
-            conference: pub.conference || pub.venue || '',
-            core_rank: pub.core_rank || (pub.conference && pub.conference.core_rank) || '',
+            conference: confVal,
+            core_rank: pub.core_rank || (typeof confVal === 'object' && confVal !== null ? confVal.core_rank : '') || '',
             credit: auth.credit || 0
           };
         }
@@ -141,12 +166,12 @@ export default class FacultyProfileWidget {
       return a.title.localeCompare(b.title);
     });
 
-    // Score breakdown by A* and A (calculated dynamically from matched publications!)
+    // Score breakdown by A* and A (calculated dynamically from matched publications as fallback)
     let calculatedAStarScore = 0;
     let calculatedAScore = 0;
     pubs.forEach(p => {
       const weight = p.core_rank === 'A*' ? 4 : (p.core_rank === 'A' ? 2 : 0);
-      const contribution = p.credit * weight;
+      const contribution = (p.credit || 0) * weight;
       if (p.core_rank === 'A*') {
         calculatedAStarScore += contribution;
       } else if (p.core_rank === 'A') {
@@ -154,8 +179,8 @@ export default class FacultyProfileWidget {
       }
     });
 
-    const aStarPts = calculatedAStarScore.toFixed(2);
-    const aPts = calculatedAScore.toFixed(2);
+    const aStarPts = data.a_star_score != null ? Number(data.a_star_score).toFixed(2) : calculatedAStarScore.toFixed(2);
+    const aPts = data.a_score != null ? Number(data.a_score).toFixed(2) : calculatedAScore.toFixed(2);
 
     const pubsHTML = pubs.length
       ? pubs.map(p => {

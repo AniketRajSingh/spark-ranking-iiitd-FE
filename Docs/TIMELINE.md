@@ -12,6 +12,19 @@ This document tracks all design modifications, architectural shifts, and develop
 
 ## Development History
 
+### 2026-06-17
+- **Type**: `[Local Uncommitted Changes]` (Backend Integration Overhaul)
+- **Summary**: Refactored frontend data fetching layer to consume compliant Django/REST backend APIs directly, eliminating massive payload transfers and reverting complex client-side calculations.
+- **Details**:
+  - **Institution Profile Widget**: Reverted `InstitutionProfile.js` to query `/api/institutions/{id}/`, `/api/institutions/{id}/trends/`, and `/api/publications/?institution={id}` in parallel, removing generic listings fetch. Mapped raw research area codes to broad names on the fly.
+  - **Faculty rankings page**: Refactored `faculty.js` page initializer to query `/api/faculty/?${params}` directly on filter/search change, delegating fractional authorship score calculation and zero-score record filtering to the backend. Removed `/api/publications/` fetch completely.
+  - **Faculty Profile page**: Modified `FacultyProfile.js` to query `/api/faculty/{id}/` directly, extracting nested publication listings and precalculated A*/A score breakdown values without downloading the full global publication database. Merged details from the generic `/api/faculty/` listing endpoint to retrieve missing profile fields (`homepage`, `irins_id`, `orcid`, `designation`, `department`).
+  - **Compare Widget**: Updated `CompareWidget.js` to map raw taxonomy codes (e.g. `4602`, `4608`) to broad human-readable categories before generating comparative radar charts.
+  - **Research Venues fixes**:
+    - **Modal Publication List**: Fixed `ConferenceList.js` to match publication records by conference acronym (e.g. `AAAI`, `CVPR`) rather than database ID, resolving the "No papers found" empty modal state when clicking eligible venues.
+    - **Research Area filtering**: Fixed `ConferenceList.js` `_filtered()` logic to map raw conference area codes to broad area IDs using `AREA_TAXONOMY` before checking selected filters, restoring correct category filtering behavior on the page.
+  - **Research Area Code Resolution**: Mapped raw Field of Research taxonomy codes (e.g. `4602`, `4608`, etc.) to their broad category names (e.g. `AI & ML`, `HCI & Multimedia`) across all display locations (Faculty Profile research area chips, Conferences table columns, and Modal Publications lists) using `AREA_TAXONOMY` and `BROAD_AREAS`.
+
 ### 2026-06-11
 - **Type**: `[Local Uncommitted Changes]` (Current Active Overhaul)
 - **Summary**: Comprehensive refactoring to ES6 modules, dynamic relative link resolution, Chart.js integrations, addition of elite sub-pages, responsive layout fine-tuning, and client-side dynamic faculty score calculations.
@@ -50,6 +63,7 @@ This document tracks all design modifications, architectural shifts, and develop
     - Created Conferences directory (`conference.html` and `ConferenceList.js` widget) to list CORE A*/A venues with area-wise category filter bindings.
     - Created Compare page (`compare.html` and `CompareWidget.js` widget) providing typeahead searches for side-by-side scorecard comparisons and a Chart.js radar chart.
     - Integrated interactive Chart.js line graphs (annual score trends) and bar graphs (research area distributions) inside `InstitutionProfile.js`.
+    - Overhauled `InstitutionProfile.js` to fetch institution details, rankings lists, faculty lists, and publications in parallel, dynamically computing the score, national rank, top faculty, annual score trends, and research area breakdown client-side to ensure full functionality when the backend returns minimal data or 404s on trends/stats/areas.
     - Implemented a clean, client-side pagination controller for publication tables on the institution profile page.
   - **Data Integration & Contracts**:
     - Developed `requirements_for_BE.txt` to serve as a specifications contract for backend developers.

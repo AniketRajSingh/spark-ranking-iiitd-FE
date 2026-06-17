@@ -5,6 +5,7 @@
 import fetchJSON from '../utils/fetchJSON.js';
 import { escapeHTML } from '../utils/sanitize.js';
 import { renderErrorCard } from '../utils/errorCard.js';
+import { AREA_TAXONOMY, BROAD_AREAS } from '../utils/areaTaxonomy.js';
 
 export default class InstitutionProfileWidget {
   constructor(containerSelector, apiBase) {
@@ -58,43 +59,33 @@ export default class InstitutionProfileWidget {
       </div>`;
 
     try {
-      // Fetch institution info
-      const data = await fetchJSON(`${this.apiBase}/institutions/${instId}/`);
-      if (!data) throw new Error('Empty response');
+      // Fetch in parallel: institution profile details, score trends, and publications
+      const [instData, trendsData, pubData] = await Promise.all([
+        fetchJSON(`${this.apiBase}/institutions/${instId}/`),
+        fetchJSON(`${this.apiBase}/institutions/${instId}/trends/`),
+        fetchJSON(`${this.apiBase}/publications/?institution=${instId}`)
+      ]);
 
-      // Fetch trends
-      let trends = [];
-      try {
-        const trendData = await fetchJSON(`${this.apiBase}/institutions/${instId}/trends/`);
-        if (Array.isArray(trendData)) {
-          trends = trendData;
-        } else if (trendData && typeof trendData === 'object') {
-          trends = trendData.trends || Object.keys(trendData).map(y => ({ year: parseInt(y), score: trendData[y] }));
-        }
-      } catch (e) {
-        console.warn('[SPARK] Could not load trends:', e.message);
-      }
+      if (!instData) throw new Error('Empty institution response');
 
-      // Fetch publications
-      try {
-        const pubResponse = await fetchJSON(`${this.apiBase}/publications/?institution=${instId}`);
-        if (Array.isArray(pubResponse)) {
-          this.pubData = pubResponse;
-        } else if (pubResponse && typeof pubResponse === 'object') {
-          this.pubData = pubResponse.results || pubResponse.publications || [];
-        }
-      } catch (e) {
-        console.warn('[SPARK] Could not load publications:', e.message);
-      }
+      // Map publications
+      const pubsList = Array.isArray(pubData) ? pubData : (pubData?.results || pubData?.publications || []);
+      this.pubData = pubsList;
 
-      this.render(data, trends);
+      // Extract trends
+      const trends = Array.isArray(trendsData) ? trendsData : [];
+
+      // Extract area breakdown/scores from instData
+      const areaScores = instData.area_breakdown || instData.area_scores || {};
+
+      this.render(instData, trends, areaScores);
     } catch (e) {
       console.error('[SPARK] Institution fetch failed:', e);
       renderErrorCard(this.container, 'Could not load institution data.', () => this.init());
     }
   }
 
-  render(data, trends) {
+  render(data, trends, areaScores) {
     const name    = escapeHTML(data.name || 'Unknown Institution');
     const website = escapeHTML(data.website || '');
     const summary = escapeHTML(data.summary || data.description || 'No overview available.');
@@ -205,7 +196,17 @@ export default class InstitutionProfileWidget {
     `;
 
     this._renderPublications();
-    this._renderCharts(trends, data.area_scores || data.area_breakdown || {});
+
+    // Map raw area codes in areaScores to broad area names
+    const mappedAreaScores = {};
+    Object.entries(areaScores || {}).forEach(([key, val]) => {
+      const broadId = AREA_TAXONOMY[key] || key;
+      const areaInfo = BROAD_AREAS.find(b => b.id === broadId);
+      const name = areaInfo ? areaInfo.name : broadId;
+      mappedAreaScores[name] = (mappedAreaScores[name] || 0) + Number(val);
+    });
+
+    this._renderCharts(trends, mappedAreaScores);
   }
 
   _renderPublications() {

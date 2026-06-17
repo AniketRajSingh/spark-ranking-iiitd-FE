@@ -2,6 +2,7 @@
 import { escapeHTML } from '../utils/sanitize.js';
 import { clearBusy, renderSkeleton } from '../utils/errorCard.js';
 import fetchJSON from '../utils/fetchJSON.js';
+import { AREA_TAXONOMY, BROAD_AREAS } from '../utils/areaTaxonomy.js';
 
 export default class ConferenceListWidget {
   constructor(containerId) {
@@ -45,8 +46,9 @@ export default class ConferenceListWidget {
     return this.data.filter(c => {
       // 1. Filter by Research Area category mapping
       if (this.filters.areas && this.filters.areas.size > 0) {
-        const area = c.area || c.acronym || '';
-        if (!this.filters.areas.has(String(area))) return false;
+        const rawArea = c.area || '';
+        const broadArea = AREA_TAXONOMY[rawArea] || rawArea;
+        if (!this.filters.areas.has(String(broadArea))) return false;
       }
 
       // 2. Filter by CORE Rank (A* / A)
@@ -110,7 +112,10 @@ export default class ConferenceListWidget {
       const id = escapeHTML(c.id || '');
       const acronym = escapeHTML(c.acronym || '');
       const name = escapeHTML(c.name || c.full_name || '');
-      const area = escapeHTML((c.area || 'unknown').toUpperCase());
+      const rawArea = c.area || '';
+      const broadId = AREA_TAXONOMY[rawArea] || rawArea;
+      const areaInfo = BROAD_AREAS.find(b => b.id === broadId);
+      const area = escapeHTML(areaInfo ? areaInfo.name : rawArea);
       const rank = escapeHTML(c.core_rank || c.rank || '');
 
       const rankBadge = rank
@@ -247,8 +252,8 @@ export default class ConferenceListWidget {
 
       const list = Array.isArray(data) ? data : (data.results || []);
       const filteredPubs = list.filter(pub => {
-        const pubConfId = pub.conference?.id || pub.conference_id || pub.conference;
-        return String(pubConfId) === String(confId);
+        const pubAcronym = pub.conference?.acronym || pub.conference || pub.venue || '';
+        return String(pubAcronym).trim().toLowerCase() === String(acronym).trim().toLowerCase();
       });
 
       if (filteredPubs.length === 0) {
@@ -269,7 +274,10 @@ export default class ConferenceListWidget {
       const rows = filteredPubs.map((pub, idx) => {
         const pTitle = escapeHTML(pub.title || '');
         const pYear = escapeHTML(pub.year || '');
-        const pArea = escapeHTML((pub.area || 'unknown').toUpperCase());
+        const rawPArea = pub.area || '';
+        const broadId = AREA_TAXONOMY[rawPArea] || rawPArea;
+        const areaInfo = BROAD_AREAS.find(b => b.id === broadId);
+        const pArea = escapeHTML(areaInfo ? areaInfo.name : rawPArea);
         const pRank = escapeHTML(pub.core_rank || '');
         const rankBadge = pRank
           ? `<span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold

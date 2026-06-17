@@ -2,6 +2,7 @@
 import fetchJSON from '../utils/fetchJSON.js';
 import { escapeHTML } from '../utils/sanitize.js';
 import { renderErrorCard } from '../utils/errorCard.js';
+import { AREA_TAXONOMY, BROAD_AREAS } from '../utils/areaTaxonomy.js';
 
 export default class CompareWidget {
   constructor(containerId, apiBase) {
@@ -245,13 +246,27 @@ export default class CompareWidget {
     const b1 = this.inst1.area_scores || this.inst1.area_breakdown || {};
     const b2 = this.inst2.area_scores || this.inst2.area_breakdown || {};
 
-    const allKeys = new Set([...Object.keys(b1), ...Object.keys(b2)]);
+    const mapToBroadNames = (breakdown) => {
+      const mapped = {};
+      Object.entries(breakdown || {}).forEach(([key, val]) => {
+        const broadId = AREA_TAXONOMY[key] || key;
+        const areaInfo = BROAD_AREAS.find(b => b.id === broadId);
+        const name = areaInfo ? areaInfo.name : broadId;
+        mapped[name] = (mapped[name] || 0) + Number(val);
+      });
+      return mapped;
+    };
+
+    const mappedB1 = mapToBroadNames(b1);
+    const mappedB2 = mapToBroadNames(b2);
+
+    const allKeys = new Set([...Object.keys(mappedB1), ...Object.keys(mappedB2)]);
     const labels = Array.from(allKeys);
 
     if (labels.length === 0) return;
 
-    const data1 = labels.map(key => Number(b1[key] || 0));
-    const data2 = labels.map(key => Number(b2[key] || 0));
+    const data1 = labels.map(key => Number(mappedB1[key] || 0));
+    const data2 = labels.map(key => Number(mappedB2[key] || 0));
 
     this.chart = new Chart(canvas, {
       type: 'radar',
