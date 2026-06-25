@@ -140,9 +140,19 @@ export default class InstitutionProfileWidget {
                       <span class="text-2xl font-black text-teal-600 block mt-0.5">#${rank}</span>
                     </div>` : ''}
                   ${score ? `
-                    <div class="stat-card w-32 text-center bg-teal-50/55 border border-teal-100/60 rounded-xl p-3">
-                      <span class="text-xs text-gray-400 font-semibold block uppercase tracking-wider">SPARK Score</span>
+                    <div class="stat-card w-32 text-center bg-teal-50/55 border border-teal-100/60 rounded-xl p-3 relative group">
+                      <span class="text-xs text-gray-400 font-semibold block uppercase tracking-wider">
+                        SPARK Score
+                        <a href="${prefix}pages/methodology.html#computing-scores" class="inline-flex items-center text-teal-500 hover:text-teal-700 ml-0.5" title="View Scoring Methodology">
+                          <svg class="w-3.5 h-3.5 inline-block align-text-top" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z"/>
+                          </svg>
+                        </a>
+                      </span>
                       <span class="text-2xl font-black text-teal-600 block mt-0.5">${score}</span>
+                      <div class="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 hidden group-hover:block bg-gray-900 text-white text-[10px] rounded-lg py-1.5 px-2.5 w-44 text-center leading-normal shadow-md z-10">
+                        Calculated as the geometric mean across positive research areas. Click icon to learn more.
+                      </div>
                     </div>` : ''}
                 </div>` : ''}
             </div>

@@ -77,17 +77,43 @@
         </div>
 
         <div>
-          <h3 class="text-base sm:text-lg font-bold text-gray-800">4. Computing Institution Scores</h3>
+          <h3 class="text-base sm:text-lg font-bold text-gray-800">4. Short, Workshop & Adjunct Proceedings Exclusions</h3>
           <p class="text-gray-600 text-sm sm:text-base mt-1.5 leading-relaxed">
-            An institution's total score is the sum of the publication credits accumulated by all its affiliated faculty members during the selected time period:
+            To ensure rankings accurately reflect core, high-impact research contributions, the ingestion pipeline filters out short, non-refereed, or workshop-style papers based on the following criteria:
           </p>
-          <div class="mt-3 p-3 bg-teal-50 border border-teal-100 rounded-lg text-center font-mono text-sm text-teal-800">
-            Institution Score = &Sigma; (Venue Weight &times; Fractional Credit)
+          <ul class="list-disc list-inside mt-2 text-gray-600 text-sm sm:text-base space-y-1.5 pl-2">
+            <li><strong class="text-gray-800">Short Papers:</strong> Publications containing <strong>5 pages or fewer</strong> are excluded.</li>
+            <li><strong class="text-gray-800">Non-core Content:</strong> Papers containing terms such as <em>demo, poster, student abstract, doctoral consortium, extended abstract, tutorial, workshop, workshops,</em> or <em>companion</em> in the title or publication venue are excluded.</li>
+            <li><strong class="text-gray-800">Adjunct Proceedings:</strong> Publications in "adjunct" volumes or auxiliary proceedings of a conference (where the venue name contains the word <em>"adjunct"</em>) are excluded.</li>
+          </ul>
+        </div>
+
+        <div id="computing-scores">
+          <h3 class="text-base sm:text-lg font-bold text-gray-800">5. Computing Institution Scores</h3>
+          <p class="text-gray-600 text-sm sm:text-base mt-1.5 leading-relaxed">
+            Rather than a simple summation, an institution's final score is calculated as the <strong class="text-gray-800">geometric mean</strong> of its scores across all broad computer science research areas. This geometric mean approach rewards institutions with balanced and diverse research footprints across multiple subfields, preventing an institution from dominating the leaderboard based solely on a single high-output area.
+          </p>
+          <p class="text-gray-600 text-sm sm:text-base mt-2 leading-relaxed">
+            To prevent a score of zero in any subfield from collapsing the entire geometric mean score of the institution to zero, the geometric mean is computed <strong>only over the set of areas in which the institution has a positive score (i.e., score &gt; 0)</strong>:
+          </p>
+          
+          <div class="mt-4 p-4 bg-teal-50 border border-teal-100 rounded-xl space-y-3">
+            <div class="text-center font-semibold text-teal-900 text-sm sm:text-base">
+              Institution Score = <span class="font-mono text-teal-700">&prod;<sub>a &in; A<sub>pos</sub></sub> (S<sub>a</sub>)<sup>1 / |A<sub>pos</sub>|</sup></span>
+            </div>
+            <div class="text-xs text-teal-800 leading-relaxed max-w-xl mx-auto border-t border-teal-100/80 pt-2.5">
+              Where:
+              <ul class="list-disc list-inside mt-1 space-y-1 text-left pl-2">
+                <li><strong class="font-semibold">A<sub>pos</sub></strong> is the set of all research areas in which the institution has a score strictly greater than zero (<span class="font-mono">S<sub>a</sub> &gt; 0</span>).</li>
+                <li><strong class="font-semibold">S<sub>a</sub></strong> is the total weighted score of the institution in research area <span class="font-mono">a</span>, computed by summing <span class="font-mono">credit &times; weight</span> for all eligible publication authorships in that area.</li>
+                <li>If an institution has no publications (<span class="font-mono">|A<sub>pos</sub>| = 0</span>), its score is <span class="font-mono">0.0</span>.</li>
+              </ul>
+            </div>
           </div>
         </div>
 
         <div>
-          <h3 class="text-base sm:text-lg font-bold text-gray-800">5. Primary Data Sources</h3>
+          <h3 class="text-base sm:text-lg font-bold text-gray-800">6. Primary Data Sources</h3>
           <p class="text-gray-600 text-sm sm:text-base mt-1.5 leading-relaxed">
             The data pipelines verify publications through three core channels:
           </p>

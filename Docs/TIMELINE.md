@@ -12,6 +12,13 @@ This document tracks all design modifications, architectural shifts, and develop
 
 ## Development History
 
+### 2026-06-25
+- **Type**: `[Local Uncommitted Changes]` (Methodology Updates)
+- **Summary**: Updated the methodology and about sections to reflect the backend changes regarding geometric mean scoring for institutions and adjunct paper exclusion.
+- **Details**:
+  - **Methodology Page**: Updated `methodology.html` sections 3 and 4 to explain the new **geometric mean** scoring across the 10 broad CS categories for institutions, and document the exclusion of adjunct, visiting, and honorary faculty publications from institutional rankings.
+  - **About Page**: Updated `about.html` description of scoring computations.
+
 ### 2026-06-17
 - **Type**: `[Local Uncommitted Changes]` (Backend Integration Overhaul)
 - **Summary**: Refactored frontend data fetching layer to consume compliant Django/REST backend APIs directly, eliminating massive payload transfers and reverting complex client-side calculations.
