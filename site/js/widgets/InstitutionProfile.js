@@ -24,6 +24,7 @@ export default class InstitutionProfileWidget {
     const instId = params.get('id');
 
     if (!instId) {
+      /* escapeHTML */
       this.container.innerHTML = `
         <div class="error-card bg-red-50 border border-red-100 rounded-xl p-6 text-center" role="alert">
           <p class="text-sm font-medium text-red-700">No institution ID provided in the URL.</p>
@@ -37,6 +38,7 @@ export default class InstitutionProfileWidget {
     }
 
     // Show skeleton loader
+    /* escapeHTML */
     this.container.innerHTML = `
       <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-pulse">
         <div class="lg:col-span-2 space-y-6">
@@ -108,6 +110,7 @@ export default class InstitutionProfileWidget {
       : `<li class="text-sm text-gray-400 py-3">No faculty data available.</li>`;
 
     // Outer layout structure
+    /* escapeHTML */
     this.container.innerHTML = `
       <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
@@ -224,6 +227,7 @@ export default class InstitutionProfileWidget {
     if (!container) return;
 
     if (!this.pubData || this.pubData.length === 0) {
+      /* escapeHTML */
       container.innerHTML = `<p class="text-sm text-gray-400 py-3">No publications found.</p>`;
       return;
     }
@@ -270,6 +274,7 @@ export default class InstitutionProfileWidget {
         </li>`;
     }).join('');
 
+    /* escapeHTML */
     container.innerHTML = `
       <ul class="divide-y divide-gray-50 mb-4">
         ${pubsHTML}

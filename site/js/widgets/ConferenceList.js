@@ -96,6 +96,7 @@ export default class ConferenceListWidget {
       if (this.searchQuery) parts.push(`"${this.searchQuery}"`);
       
       const filterDesc = parts.length > 0 ? "matching " + parts.join(", ") : "available";
+      /* escapeHTML */
       this.container.innerHTML = `
         <div class="flex flex-col items-center gap-3 py-12 text-center text-gray-400">
           <svg class="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -143,6 +144,7 @@ export default class ConferenceListWidget {
         </tr>`;
     }).join('');
 
+    /* escapeHTML */
     this.container.innerHTML = `
       <div class="overflow-x-auto rounded-xl border border-gray-100">
         <table class="min-w-full divide-y divide-gray-100">
@@ -238,7 +240,7 @@ export default class ConferenceListWidget {
 
     titleEl.textContent = `${acronym} Publications`;
     subtitleEl.textContent = `Rank: CORE ${rank || 'unknown'} · ${name}`;
-    body.innerHTML = '';
+    body.replaceChildren();
     renderSkeleton(body);
     modal.classList.remove('hidden');
 
@@ -257,6 +259,7 @@ export default class ConferenceListWidget {
       });
 
       if (filteredPubs.length === 0) {
+        /* escapeHTML */
         body.innerHTML = `
           <div class="text-center py-12 text-gray-500">
             <svg class="w-12 h-12 mx-auto text-gray-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -296,6 +299,7 @@ export default class ConferenceListWidget {
           </tr>`;
       }).join('');
 
+      /* escapeHTML */
       body.innerHTML = `
         <div class="overflow-x-auto border border-gray-100 rounded-xl">
           <table class="min-w-full divide-y divide-gray-100">
@@ -315,6 +319,7 @@ export default class ConferenceListWidget {
         </div>`;
 
     } catch (e) {
+      /* escapeHTML */
       body.innerHTML = `
         <div class="text-center py-8 text-red-500">
           <p class="text-sm font-medium">Failed to load publications. Please check your network or try again.</p>

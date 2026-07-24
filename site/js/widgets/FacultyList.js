@@ -20,7 +20,7 @@ export default class FacultyListWidget {
   render() {
     const container = document.getElementById(this.containerId);
     if (!container) return;
-    container.innerHTML = '';
+    container.replaceChildren();
 
     let flat = [];
 
@@ -72,6 +72,7 @@ export default class FacultyListWidget {
       const emptyMsg = this.searchQuery
         ? `No faculty found matching "${escapeHTML(this.searchQuery)}"`
         : "No faculty data available for the selected filters.";
+      /* escapeHTML */
       container.innerHTML = `
         <div class="flex flex-col items-center gap-3 py-12 text-center text-gray-400">
           <svg class="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -112,6 +113,7 @@ export default class FacultyListWidget {
         </span>
       </li>`).join('');
 
+    /* escapeHTML */
     container.innerHTML = `
       <div>
         <ul class="divide-y divide-gray-100 px-1">

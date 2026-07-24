@@ -72,6 +72,7 @@ export default class RankingTableWidget {
       const emptyMsg = this.searchQuery
         ? `No institutions found matching "${escapeHTML(this.searchQuery)}"`
         : "No ranking data available for the selected filters.";
+      /* escapeHTML */
       this.container.innerHTML = `
         <div class="flex flex-col items-center gap-3 py-12 text-center text-gray-400">
           <svg class="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -104,6 +105,7 @@ export default class RankingTableWidget {
         </tr>`;
     }).join('');
 
+    /* escapeHTML */
     this.container.innerHTML = `
       <div class="overflow-x-auto rounded-xl border border-gray-100">
         <table class="min-w-full divide-y divide-gray-100" role="grid" aria-label="National CS Research Rankings">

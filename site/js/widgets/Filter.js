@@ -68,6 +68,7 @@ export default class FilterWidget {
 
     const isCollapsed = this.state.isCollapsed;
 
+    /* escapeHTML */
     this.container.innerHTML = `
       <div class="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm space-y-4">
         

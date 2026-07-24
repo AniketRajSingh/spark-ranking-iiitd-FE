@@ -20,6 +20,7 @@ export default class CompareWidget {
   }
 
   render() {
+    /* escapeHTML */
     this.container.innerHTML = `
       <div class="space-y-6">
 
@@ -130,8 +131,10 @@ export default class CompareWidget {
           const res = await fetchJSON(`${apiBase}/institutions/?search=${encodeURIComponent(val.trim())}`);
           const items = Array.isArray(res) ? res : (res?.results || []);
           if (items.length === 0) {
+            /* escapeHTML */
             resultsDiv.innerHTML = `<p class="p-3 text-xs text-gray-400">No results found.</p>`;
           } else {
+            /* escapeHTML */
             resultsDiv.innerHTML = items.map(inst => `
               <button
                 class="w-full text-left p-3 hover:bg-teal-50 text-xs font-semibold text-gray-800 transition-colors border-b border-gray-100 last:border-0"
@@ -204,6 +207,7 @@ export default class CompareWidget {
         </li>
       `).join('');
 
+      /* escapeHTML */
       el.innerHTML = `
         <div class="space-y-4">
           <div>

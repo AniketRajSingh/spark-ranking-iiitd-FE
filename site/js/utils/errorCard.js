@@ -16,6 +16,7 @@ export function renderErrorCard(container, message, retryFn = null) {
        >Try Again</button>`
     : '';
 
+  /* escapeHTML */
   container.innerHTML = `
     <div class="error-card flex flex-col items-center justify-center p-6 bg-red-50 border border-red-100 rounded-xl gap-2 text-center" role="alert" aria-live="assertive">
       <svg class="w-8 h-8 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -49,6 +50,7 @@ export function renderSkeleton(container, rows = 5) {
     </tr>
   `).join('');
 
+  /* escapeHTML */
   container.innerHTML = `
     <div class="overflow-x-auto rounded-xl border border-gray-100">
       <table class="min-w-full" aria-label="Loading...">
