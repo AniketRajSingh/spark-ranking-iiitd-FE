@@ -2,18 +2,19 @@
 // Features:
 // - Side-by-side multi-dimensional comparison for Institutions & Faculty
 // - Reliable 2-column responsive layout (.cmp-grid-2) that never collapses into a single column on desktop
-// - 1-Click preset comparison chips (IIIT Delhi vs IISc, IIT Bombay, IIT Delhi, etc.)
-// - Instant suggestion dropdowns on focus/click featuring IIIT Delhi & top CS researchers
-// - Historical Score Trends line chart (2015-2026) & Radar / Grouped Bar discipline chart side-by-side
-// - Comprehensive head-to-head comparative metric progress bars with leader badges
-// - Discipline-by-discipline advantage matrix table with visual mini-bars
-// - Side-by-side Top Faculty lists with sorting & area filtering
-// - Side-by-side Verified Publications lists with sorting, year range, and CORE rank filtering
-// - Clean, responsive SPARK design system with rich aesthetics
+// - User-driven selection (no forced auto-selection, no biased featured tags)
+// - Independent pagination for publications with Prev/Next buttons (no jump-to-page input)
+// - Accurate positive advantage calculations (+X.XX for whichever entity leads)
+// - Clear taxonomy mapping for "other" (Interdisciplinary & Other Computing) with filterable publications
+// - Full display of all top faculty without arbitrary truncations
+// - Multi-dimensional filters (Research Area, CORE Rank / Venue, Publication Year, Sorting)
+// - Interactive dual charts (Historical Trends 2015-2026 + Radar / Grouped Bar Discipline Breakdown)
 
 import fetchJSON from '../utils/fetchJSON.js';
 import { escapeHTML } from '../utils/sanitize.js';
 import { AREA_TAXONOMY, BROAD_AREAS } from '../utils/areaTaxonomy.js';
+
+const PUBS_PER_PAGE = 8;
 
 // Hierarchical taxonomy for combined & sub-area filtering
 const TAXONOMY_GROUPS = [
@@ -50,7 +51,7 @@ const TAXONOMY_GROUPS = [
     options: [
       { value: 'systems:all', label: 'Systems & OS (All)' },
       { value: '4606', label: 'Distributed Systems & OS (4606)' },
-      { value: 'CSE', label: 'Computer Systems (CSE)' },
+      { value: 'CSE', label: 'Computer Systems Engineering (CSE)' },
     ]
   },
   {
@@ -73,11 +74,17 @@ const TAXONOMY_GROUPS = [
       { value: 'graphics:all', label: 'Graphics, AR & Games (4607)' },
     ]
   },
+  {
+    group: 'Interdisciplinary & Other CS',
+    options: [
+      { value: 'other', label: 'Interdisciplinary & Other CS (General Venues)' },
+    ]
+  },
 ];
 
-// Curated suggestions shown on focus / empty click (prominently featuring IIIT Delhi)
+// Clean suggestions shown on input focus / click (no biased "featured" tags)
 const SUGGESTED_INSTITUTIONS = [
-  { id: 1, name: 'IIIT Delhi', subtitle: 'New Delhi · National CS Research Hub', featured: true },
+  { id: 1, name: 'IIIT Delhi', subtitle: 'New Delhi · National Rank #6' },
   { id: 3, name: 'IISc Bangalore', subtitle: 'Bengaluru · National Rank #1' },
   { id: 2, name: 'IIT Bombay', subtitle: 'Mumbai · National Rank #2' },
   { id: 5, name: 'IIT Delhi', subtitle: 'New Delhi · Premier IIT' },
@@ -87,30 +94,24 @@ const SUGGESTED_INSTITUTIONS = [
 ];
 
 const SUGGESTED_FACULTY = [
-  { id: 5, name: 'Rajiv Ratn Shah', inst: 'IIIT Delhi', score: '49.94', featured: true },
-  { id: 11, name: 'Md. Shad Akhtar', inst: 'IIIT Delhi', score: '33.48', featured: true },
+  { id: 5, name: 'Rajiv Ratn Shah', inst: 'IIIT Delhi', score: '49.94' },
+  { id: 11, name: 'Md. Shad Akhtar', inst: 'IIIT Delhi', score: '33.48' },
   { id: 86, name: 'Sunita Sarawagi', inst: 'IIT Bombay', score: '55.70' },
   { id: 234, name: 'Tanmoy Chakraborty', inst: 'IIT Delhi', score: '99.19' },
   { id: 129, name: 'R. Venkatesh Babu', inst: 'IISc Bangalore', score: '92.78' },
   { id: 336, name: 'C.V. Jawahar', inst: 'IIIT Hyderabad', score: '81.20' },
 ];
 
-// 1-Click quick compare presets
-const PRESET_INSTITUTIONS = [
-  { label: 'IIIT Delhi vs IISc Bangalore', id1: 1, name1: 'IIIT Delhi', id2: 3, name2: 'IISc Bangalore' },
-  { label: 'IIIT Delhi vs IIT Bombay', id1: 1, name1: 'IIIT Delhi', id2: 2, name2: 'IIT Bombay' },
-  { label: 'IIIT Delhi vs IIT Delhi', id1: 1, name1: 'IIIT Delhi', id2: 5, name2: 'IIT Delhi' },
-  { label: 'IIIT Delhi vs IIIT Hyderabad', id1: 1, name1: 'IIIT Delhi', id2: 8, name2: 'IIIT Hyderabad' },
-];
-
-const PRESET_FACULTY = [
-  { label: 'Rajiv Ratn Shah (IIITD) vs Sunita Sarawagi (IITB)', id1: 5, name1: 'Rajiv Ratn Shah', id2: 86, name2: 'Sunita Sarawagi' },
-  { label: 'Md. Shad Akhtar (IIITD) vs Tanmoy Chakraborty (IITD)', id1: 11, name1: 'Md. Shad Akhtar', id2: 234, name2: 'Tanmoy Chakraborty' },
-  { label: 'Rajiv Ratn Shah (IIITD) vs C.V. Jawahar (IIITH)', id1: 5, name1: 'Rajiv Ratn Shah', id2: 336, name2: 'C.V. Jawahar' },
-];
-
 function matchesAreaFilter(itemAreaOrAreas, filterValue) {
   if (!filterValue || filterValue === 'all') return true;
+
+  // Handle 'other' (interdisciplinary or unclassified FoR code)
+  if (filterValue === 'other') {
+    if (Array.isArray(itemAreaOrAreas)) {
+      return itemAreaOrAreas.length === 0 || itemAreaOrAreas.includes('other') || itemAreaOrAreas.some(a => !a);
+    }
+    return !itemAreaOrAreas || itemAreaOrAreas === 'other';
+  }
 
   if (filterValue.endsWith(':all')) {
     const broadId = filterValue.split(':')[0];
@@ -158,19 +159,21 @@ export default class CompareWidget {
     this.sortByPubs = 'year_desc'; // 'year_desc' | 'rank_desc' | 'title_asc'
     this.chartType = 'radar'; // 'radar' | 'bar'
 
-    // Institution comparison state
+    // Institution comparison state (Unselected by default — user selects)
     this.inst1 = null;
     this.inst2 = null;
     this.inst1Trends = [];
     this.inst2Trends = [];
     this.inst1Pubs = [];
     this.inst2Pubs = [];
-    this.loadingInst = false;
+    this.inst1PubPage = 1;
+    this.inst2PubPage = 1;
 
-    // Faculty comparison state
+    // Faculty comparison state (Unselected by default — user selects)
     this.fac1 = null;
     this.fac2 = null;
-    this.loadingFac = false;
+    this.fac1PubPage = 1;
+    this.fac2PubPage = 1;
 
     // Chart instances
     this.disciplineChart = null;
@@ -178,17 +181,6 @@ export default class CompareWidget {
 
     if (!this.container) return;
     this.render();
-
-    // Auto-load default comparison on initial page visit: IIIT Delhi vs IISc Bangalore
-    this._loadInitialDefaults();
-  }
-
-  async _loadInitialDefaults() {
-    try {
-      await this._selectInstitutionPair(1, 'IIIT Delhi', 3, 'IISc Bangalore');
-    } catch (e) {
-      console.warn('[SPARK Compare] Default auto-load deferred:', e);
-    }
   }
 
   _buildAreaOptionsHTML() {
@@ -206,7 +198,7 @@ export default class CompareWidget {
     this.container.innerHTML = `
       <div class="space-y-6">
 
-        <!-- Top Header & Mode Switcher -->
+        <!-- Top Header & Filter Controls -->
         <div class="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm space-y-4">
           
           <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -282,14 +274,6 @@ export default class CompareWidget {
 
           </div>
 
-          <!-- Quick 1-Click Comparison Presets -->
-          <div class="pt-2 border-t border-gray-100 flex items-center gap-2 flex-wrap">
-            <span class="text-2xs font-bold text-gray-400 uppercase tracking-wider">Quick Compare:</span>
-            <div id="cmp-presets-container" class="flex items-center gap-1.5 flex-wrap">
-              ${this._renderPresetChips()}
-            </div>
-          </div>
-
         </div>
 
         <!-- Dynamic Selector Row for Active Mode -->
@@ -299,15 +283,7 @@ export default class CompareWidget {
 
         <!-- Detailed Comparison Output Section -->
         <div id="cmp-details-container">
-          <div class="p-12 text-center text-gray-400 bg-white rounded-2xl border border-gray-100 shadow-sm">
-            <div class="inline-flex items-center justify-center w-12 h-12 rounded-full bg-teal-50 text-teal-600 mb-3 animate-pulse">
-              <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
-            </div>
-            <p class="text-sm font-bold text-gray-700">Loading Head-to-Head Analytics...</p>
-            <p class="text-xs text-gray-400 mt-1">Fetching metrics, multi-year trends, and verified publications.</p>
-          </div>
+          ${this._renderEmptyStateHTML()}
         </div>
 
       </div>
@@ -315,7 +291,6 @@ export default class CompareWidget {
 
     this._attachTabListeners();
     this._attachFilterListeners();
-    this._attachPresetListeners();
 
     if (this.activeTab === 'institutions') {
       this._attachInstitutionSelectors();
@@ -326,82 +301,25 @@ export default class CompareWidget {
     }
   }
 
-  _renderPresetChips() {
-    const list = this.activeTab === 'institutions' ? PRESET_INSTITUTIONS : PRESET_FACULTY;
-    return list.map((p, idx) => `
-      <button
-        type="button"
-        class="preset-chip"
-        data-preset-idx="${idx}"
-      >
-        <span>⚡</span> ${escapeHTML(p.label)}
-      </button>
-    `).join('');
-  }
-
-  _attachPresetListeners() {
-    const container = this.container.querySelector('#cmp-presets-container');
-    if (!container) return;
-
-    container.querySelectorAll('button[data-preset-idx]').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const idx = Number(btn.dataset.presetIdx);
-        if (this.activeTab === 'institutions') {
-          const p = PRESET_INSTITUTIONS[idx];
-          if (p) {
-            await this._selectInstitutionPair(p.id1, p.name1, p.id2, p.name2);
-          }
-        } else {
-          const p = PRESET_FACULTY[idx];
-          if (p) {
-            await this._selectFacultyPair(p.id1, p.name1, p.id2, p.name2);
-          }
-        }
-      });
-    });
-  }
-
-  async _selectInstitutionPair(id1, name1, id2, name2) {
-    const in1 = this.container.querySelector('#search-inst-1');
-    const in2 = this.container.querySelector('#search-inst-2');
-    if (in1) in1.value = name1;
-    if (in2) in2.value = name2;
-
-    const [inst1, trends1, pubs1, inst2, trends2, pubs2] = await Promise.all([
-      fetchJSON(`${this.apiBase}/institutions/${id1}/`),
-      fetchJSON(`${this.apiBase}/institutions/${id1}/trends/`),
-      fetchJSON(`${this.apiBase}/publications/?institution=${id1}`),
-      fetchJSON(`${this.apiBase}/institutions/${id2}/`),
-      fetchJSON(`${this.apiBase}/institutions/${id2}/trends/`),
-      fetchJSON(`${this.apiBase}/publications/?institution=${id2}`),
-    ]);
-
-    this.inst1 = inst1;
-    this.inst1Trends = Array.isArray(trends1) ? trends1 : (trends1?.results || []);
-    this.inst1Pubs = Array.isArray(pubs1) ? pubs1 : (pubs1?.results || []);
-
-    this.inst2 = inst2;
-    this.inst2Trends = Array.isArray(trends2) ? trends2 : (trends2?.results || []);
-    this.inst2Pubs = Array.isArray(pubs2) ? pubs2 : (pubs2?.results || []);
-
-    this._renderInstitutionComparison();
-  }
-
-  async _selectFacultyPair(id1, name1, id2, name2) {
-    const in1 = this.container.querySelector('#search-fac-1');
-    const in2 = this.container.querySelector('#search-fac-2');
-    if (in1) in1.value = name1;
-    if (in2) in2.value = name2;
-
-    const [fac1, fac2] = await Promise.all([
-      fetchJSON(`${this.apiBase}/faculty/${id1}/`),
-      fetchJSON(`${this.apiBase}/faculty/${id2}/`),
-    ]);
-
-    this.fac1 = fac1;
-    this.fac2 = fac2;
-
-    this._renderFacultyComparison();
+  _renderEmptyStateHTML() {
+    const isInst = this.activeTab === 'institutions';
+    return `
+      <div class="card p-12 text-center text-gray-400 bg-white rounded-2xl border border-gray-100 shadow-sm">
+        <div class="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-teal-50 text-teal-600 mb-4 border border-teal-100">
+          <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="${isInst ? 'M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4' : 'M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z'}" />
+          </svg>
+        </div>
+        <h3 class="text-base font-bold text-gray-800">
+          ${isInst ? 'Select Two Institutions to Compare' : 'Select Two Faculty Members to Compare'}
+        </h3>
+        <p class="text-xs text-gray-500 mt-1.5 max-w-md mx-auto leading-relaxed">
+          ${isInst 
+            ? 'Type or click the search boxes above to select any two Indian computer science departments. SPARK will generate side-by-side comparative metrics, multi-year historical trajectories, discipline breakdowns, and verified publications.'
+            : 'Type or click the search boxes above to select two computer science researchers. SPARK will evaluate their total points, CORE A* achievements, research specializations, and publications side-by-side.'}
+        </p>
+      </div>
+    `;
   }
 
   _attachTabListeners() {
@@ -417,15 +335,10 @@ export default class CompareWidget {
     }
 
     if (tabFac) {
-      tabFac.addEventListener('click', async () => {
+      tabFac.addEventListener('click', () => {
         if (this.activeTab === 'faculty') return;
         this.activeTab = 'faculty';
         this.render();
-        // If faculty not selected yet, auto-select Rajiv Ratn Shah vs Sunita Sarawagi
-        if (!this.fac1 || !this.fac2) {
-          const p = PRESET_FACULTY[0];
-          await this._selectFacultyPair(p.id1, p.name1, p.id2, p.name2);
-        }
       });
     }
   }
@@ -435,6 +348,10 @@ export default class CompareWidget {
     if (areaSel) {
       areaSel.addEventListener('change', (e) => {
         this.areaFilter = e.target.value;
+        this.inst1PubPage = 1;
+        this.inst2PubPage = 1;
+        this.fac1PubPage = 1;
+        this.fac2PubPage = 1;
         this._refreshCurrentComparison();
       });
     }
@@ -443,6 +360,10 @@ export default class CompareWidget {
     if (rankSel) {
       rankSel.addEventListener('change', (e) => {
         this.rankFilter = e.target.value;
+        this.inst1PubPage = 1;
+        this.inst2PubPage = 1;
+        this.fac1PubPage = 1;
+        this.fac2PubPage = 1;
         this._refreshCurrentComparison();
       });
     }
@@ -451,6 +372,10 @@ export default class CompareWidget {
     if (yearSel) {
       yearSel.addEventListener('change', (e) => {
         this.yearFilter = e.target.value;
+        this.inst1PubPage = 1;
+        this.inst2PubPage = 1;
+        this.fac1PubPage = 1;
+        this.fac2PubPage = 1;
         this._refreshCurrentComparison();
       });
     }
@@ -473,6 +398,10 @@ export default class CompareWidget {
         this.yearFilter = 'all';
         this.sortByFaculty = 'score_desc';
         this.sortByPubs = 'year_desc';
+        this.inst1PubPage = 1;
+        this.inst2PubPage = 1;
+        this.fac1PubPage = 1;
+        this.fac2PubPage = 1;
         if (areaSel) areaSel.value = 'all';
         if (rankSel) rankSel.value = 'all';
         if (yearSel) yearSel.value = 'all';
@@ -495,8 +424,8 @@ export default class CompareWidget {
   // ══════════════════════════════════════════════════════════════════════════
 
   _renderInstitutionSelectRow() {
-    const name1 = this.inst1 ? escapeHTML(this.inst1.name) : 'IIIT Delhi';
-    const name2 = this.inst2 ? escapeHTML(this.inst2.name) : 'IISc Bangalore';
+    const name1 = this.inst1 ? escapeHTML(this.inst1.name) : '';
+    const name2 = this.inst2 ? escapeHTML(this.inst2.name) : '';
 
     return `
       <div class="cmp-grid-2 bg-white border border-gray-100 rounded-2xl p-6 shadow-sm">
@@ -506,13 +435,13 @@ export default class CompareWidget {
             <label for="search-inst-1" class="text-xs text-teal-800 font-bold uppercase tracking-wider flex items-center gap-1.5">
               <span class="w-2.5 h-2.5 rounded-full bg-teal-500"></span> Institution 1 (Teal)
             </label>
-            <span class="text-2xs text-gray-400">Click input for instant suggestions</span>
+            <span class="text-2xs text-gray-400">Click input for suggestions or type</span>
           </div>
           <div class="relative">
             <input
               type="text"
               id="search-inst-1"
-              placeholder="Click for suggestions (e.g. IIIT Delhi) or type..."
+              placeholder="Type to search institution (e.g. IIIT Delhi)..."
               value="${name1}"
               autocomplete="off"
               class="w-full pl-9 pr-3 py-2.5 text-xs rounded-xl border border-gray-200 bg-white text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 shadow-sm"
@@ -530,13 +459,13 @@ export default class CompareWidget {
             <label for="search-inst-2" class="text-xs text-blue-800 font-bold uppercase tracking-wider flex items-center gap-1.5">
               <span class="w-2.5 h-2.5 rounded-full bg-blue-500"></span> Institution 2 (Blue)
             </label>
-            <span class="text-2xs text-gray-400">Click input for instant suggestions</span>
+            <span class="text-2xs text-gray-400">Click input for suggestions or type</span>
           </div>
           <div class="relative">
             <input
               type="text"
               id="search-inst-2"
-              placeholder="Click for suggestions (e.g. IISc Bangalore) or type..."
+              placeholder="Type to search institution (e.g. IISc Bangalore)..."
               value="${name2}"
               autocomplete="off"
               class="w-full pl-9 pr-3 py-2.5 text-xs rounded-xl border border-gray-200 bg-white text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 shadow-sm"
@@ -566,6 +495,7 @@ export default class CompareWidget {
         this.inst1 = inst;
         this.inst1Trends = Array.isArray(trends) ? trends : (trends?.results || []);
         this.inst1Pubs = Array.isArray(pubs) ? pubs : (pubs?.results || []);
+        this.inst1PubPage = 1;
         this._renderInstitutionComparison();
       }
     });
@@ -584,6 +514,7 @@ export default class CompareWidget {
         this.inst2 = inst;
         this.inst2Trends = Array.isArray(trends) ? trends : (trends?.results || []);
         this.inst2Pubs = Array.isArray(pubs) ? pubs : (pubs?.results || []);
+        this.inst2PubPage = 1;
         this._renderInstitutionComparison();
       }
     });
@@ -594,14 +525,7 @@ export default class CompareWidget {
     if (!container) return;
 
     if (!this.inst1 || !this.inst2) {
-      container.innerHTML = `
-        <div class="card p-12 text-center text-gray-400 bg-white rounded-2xl border border-gray-100 shadow-sm">
-          <svg class="w-12 h-12 mx-auto text-gray-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
-          </svg>
-          <p class="text-sm font-semibold text-gray-600">Select Institutions</p>
-          <p class="text-xs text-gray-400 mt-1 max-w-sm mx-auto">Select two institutions above or click a quick compare preset to generate the side-by-side analysis.</p>
-        </div>`;
+      container.innerHTML = this._renderEmptyStateHTML();
       return;
     }
 
@@ -666,16 +590,23 @@ export default class CompareWidget {
     const fac1List = filterFac(i1.top_faculty || []);
     const fac2List = filterFac(i2.top_faculty || []);
 
-    // Disciplines breakdown
+    // Disciplines breakdown mapping (clearly handling 'other' and 'CSE')
     const b1 = i1.area_scores || i1.area_breakdown || {};
     const b2 = i2.area_scores || i2.area_breakdown || {};
 
     const mapAreas = (breakdown) => {
       const mapped = {};
       Object.entries(breakdown).forEach(([k, v]) => {
-        const broad = AREA_TAXONOMY[k] || k;
-        const info = BROAD_AREAS.find(b => b.id === broad);
-        const name = info ? info.name : broad;
+        let name;
+        if (k === 'other') {
+          name = 'Interdisciplinary & Other Computing';
+        } else if (k === 'CSE') {
+          name = 'Computer Systems Engineering (CSE)';
+        } else {
+          const broad = AREA_TAXONOMY[k] || k;
+          const info = BROAD_AREAS.find(b => b.id === broad);
+          name = info ? info.name : broad;
+        }
         mapped[name] = (mapped[name] || 0) + Number(v);
       });
       return mapped;
@@ -685,7 +616,7 @@ export default class CompareWidget {
     const areas2 = mapAreas(b2);
     const allDisciplineNames = Array.from(new Set([...Object.keys(areas1), ...Object.keys(areas2)])).sort();
 
-    // Table rows with visual mini-bars
+    // Table rows with POSITIVE advantage calculation
     const disciplineRowsHTML = allDisciplineNames.map(name => {
       const pts1 = Number(areas1[name] || 0).toFixed(2);
       const pts2 = Number(areas2[name] || 0).toFixed(2);
@@ -694,13 +625,27 @@ export default class CompareWidget {
       const total = num1 + num2 || 1;
       const pct1 = Math.round((num1 / total) * 100);
       const pct2 = 100 - pct1;
-      const diff = (num1 - num2).toFixed(2);
+      const absDiff = Math.abs(num1 - num2).toFixed(2);
       const leader1 = num1 > num2;
       const leader2 = num2 > num1;
 
+      let advantageHTML;
+      if (leader1) {
+        advantageHTML = `<span class="inline-flex items-center px-2 py-0.5 rounded text-2xs font-bold bg-teal-100 text-teal-800">+${absDiff} (${escapeHTML(i1.name)})</span>`;
+      } else if (leader2) {
+        advantageHTML = `<span class="inline-flex items-center px-2 py-0.5 rounded text-2xs font-bold bg-blue-100 text-blue-800">+${absDiff} (${escapeHTML(i2.name)})</span>`;
+      } else {
+        advantageHTML = `<span class="text-gray-400 text-2xs font-medium">Tied</span>`;
+      }
+
+      const isOther = name === 'Interdisciplinary & Other Computing';
+
       return `
         <tr class="hover:bg-gray-50/70 transition-colors border-b border-gray-100 last:border-0">
-          <td class="px-5 py-3 text-xs font-semibold text-gray-900">${escapeHTML(name)}</td>
+          <td class="px-5 py-3 text-xs font-semibold text-gray-900">
+            ${escapeHTML(name)}
+            ${isOther ? `<span class="block text-3xs text-gray-400 font-normal">Cross-disciplinary & general CS venues not assigned a specific 4-digit FoR code</span>` : ''}
+          </td>
           <td class="px-5 py-3 text-xs font-mono text-center ${leader1 ? 'font-bold text-teal-700 bg-teal-50/40' : 'text-gray-600'}">
             ${pts1} pts ${leader1 ? '<span class="ml-1 text-3xs px-1.5 py-0.2 rounded bg-teal-100 text-teal-800 font-bold uppercase">Lead</span>' : ''}
           </td>
@@ -708,11 +653,7 @@ export default class CompareWidget {
             ${pts2} pts ${leader2 ? '<span class="ml-1 text-3xs px-1.5 py-0.2 rounded bg-blue-100 text-blue-800 font-bold uppercase">Lead</span>' : ''}
           </td>
           <td class="px-5 py-3 text-xs text-center">
-            ${Number(diff) > 0
-              ? `<span class="inline-flex items-center px-2 py-0.5 rounded text-2xs font-bold bg-teal-100 text-teal-800">+${diff} (${escapeHTML(i1.name)})</span>`
-              : (Number(diff) < 0
-                ? `<span class="inline-flex items-center px-2 py-0.5 rounded text-2xs font-bold bg-blue-100 text-blue-800">${diff} (${escapeHTML(i2.name)})</span>`
-                : '<span class="text-gray-400 text-2xs">Tied</span>')}
+            ${advantageHTML}
           </td>
           <td class="px-5 py-3 text-center min-w-[120px]">
             <div class="h-2 w-full bg-gray-100 rounded-full overflow-hidden flex">
@@ -722,6 +663,19 @@ export default class CompareWidget {
           </td>
         </tr>`;
     }).join('');
+
+    // Pagination slicing for publications
+    const totalPages1 = Math.max(1, Math.ceil(filteredPubs1.length / PUBS_PER_PAGE));
+    if (this.inst1PubPage > totalPages1) this.inst1PubPage = totalPages1;
+    const startIdx1 = (this.inst1PubPage - 1) * PUBS_PER_PAGE;
+    const endIdx1 = Math.min(startIdx1 + PUBS_PER_PAGE, filteredPubs1.length);
+    const paginatedPubs1 = filteredPubs1.slice(startIdx1, endIdx1);
+
+    const totalPages2 = Math.max(1, Math.ceil(filteredPubs2.length / PUBS_PER_PAGE));
+    if (this.inst2PubPage > totalPages2) this.inst2PubPage = totalPages2;
+    const startIdx2 = (this.inst2PubPage - 1) * PUBS_PER_PAGE;
+    const endIdx2 = Math.min(startIdx2 + PUBS_PER_PAGE, filteredPubs2.length);
+    const paginatedPubs2 = filteredPubs2.slice(startIdx2, endIdx2);
 
     container.innerHTML = `
       <div class="space-y-6">
@@ -910,7 +864,7 @@ export default class CompareWidget {
           </div>
         </div>
 
-        <!-- Side-by-Side Top Faculty Comparison (cmp-grid-2) -->
+        <!-- Side-by-Side Top Faculty Comparison (ALL faculty listed, no slice cut-off) -->
         <div class="cmp-grid-2">
           <!-- Inst 1 Faculty -->
           <div class="card p-6 bg-white rounded-2xl border border-gray-100 shadow-sm space-y-3">
@@ -919,10 +873,10 @@ export default class CompareWidget {
                 <span class="w-2.5 h-2.5 rounded-full bg-teal-500"></span>
                 Top Faculty · ${escapeHTML(i1.name)}
               </h4>
-              <span class="text-xs font-mono text-teal-700 font-semibold">${fac1List.length} Active</span>
+              <span class="text-xs font-mono text-teal-700 font-semibold">${fac1List.length} listed</span>
             </div>
             <ul class="divide-y divide-gray-100">
-              ${fac1List.slice(0, 8).map((f, idx) => `
+              ${fac1List.map((f, idx) => `
                 <li class="py-2.5 flex items-center justify-between">
                   <div class="min-w-0 pr-2">
                     <span class="text-xs font-semibold text-gray-900 block truncate">${idx + 1}. ${escapeHTML(f.name)}</span>
@@ -943,10 +897,10 @@ export default class CompareWidget {
                 <span class="w-2.5 h-2.5 rounded-full bg-blue-500"></span>
                 Top Faculty · ${escapeHTML(i2.name)}
               </h4>
-              <span class="text-xs font-mono text-blue-700 font-semibold">${fac2List.length} Active</span>
+              <span class="text-xs font-mono text-blue-700 font-semibold">${fac2List.length} listed</span>
             </div>
             <ul class="divide-y divide-gray-100">
-              ${fac2List.slice(0, 8).map((f, idx) => `
+              ${fac2List.map((f, idx) => `
                 <li class="py-2.5 flex items-center justify-between">
                   <div class="min-w-0 pr-2">
                     <span class="text-xs font-semibold text-gray-900 block truncate">${idx + 1}. ${escapeHTML(f.name)}</span>
@@ -961,57 +915,123 @@ export default class CompareWidget {
           </div>
         </div>
 
-        <!-- Side-by-Side Filtered Publications List (cmp-grid-2) -->
+        <!-- Side-by-Side Filtered Publications List with Pagination (cmp-grid-2) -->
         <div class="cmp-grid-2">
+          
           <!-- Inst 1 Publications -->
-          <div class="card p-6 bg-white rounded-2xl border border-gray-100 shadow-sm space-y-3">
-            <div class="flex items-center justify-between border-b border-gray-100 pb-2">
-              <h4 class="text-sm font-bold text-gray-900">Publications · ${escapeHTML(i1.name)}</h4>
-              <span class="text-xs font-mono text-teal-700 font-semibold">${filteredPubs1.length} papers</span>
+          <div class="card p-6 bg-white rounded-2xl border border-gray-100 shadow-sm space-y-3 flex flex-col justify-between">
+            <div>
+              <div class="flex items-center justify-between border-b border-gray-100 pb-2 mb-2">
+                <h4 class="text-sm font-bold text-gray-900">Publications · ${escapeHTML(i1.name)}</h4>
+                <span class="text-xs font-mono text-teal-700 font-semibold">${filteredPubs1.length} papers</span>
+              </div>
+              <ul class="divide-y divide-gray-100">
+                ${paginatedPubs1.map(p => {
+                  const conf = p.conference?.acronym || p.conference || p.venue || '';
+                  const rank = p.core_rank || (p.conference && p.conference.core_rank) || '';
+                  const badgeClass = rank === 'A*' ? 'badge-a-star' : (rank === 'A' ? 'badge-a' : 'badge-journal');
+                  const areaLabel = p.area ? `Area: ${p.area}` : 'Interdisciplinary / Other';
+                  return `
+                    <li class="py-2.5 space-y-1">
+                      <p class="text-xs font-semibold text-gray-800 leading-snug">${escapeHTML(p.title)}</p>
+                      <div class="flex items-center gap-2 text-2xs text-gray-500 flex-wrap">
+                        ${rank ? `<span class="px-1.5 py-0.2 rounded font-bold ${badgeClass}">${escapeHTML(rank)}</span>` : ''}
+                        ${conf ? `<span class="font-medium text-teal-700">${escapeHTML(conf)}</span>` : ''}
+                        <span>${escapeHTML(p.year || '')}</span>
+                        <span class="px-1.5 py-0.2 rounded bg-gray-100 text-gray-600 text-3xs font-medium">${escapeHTML(areaLabel)}</span>
+                      </div>
+                    </li>
+                  `;
+                }).join('') || '<li class="py-4 text-xs text-gray-400 text-center">No publications match active filters</li>'}
+              </ul>
             </div>
-            <ul class="divide-y divide-gray-100">
-              ${filteredPubs1.slice(0, 8).map(p => {
-                const conf = p.conference?.acronym || p.conference || p.venue || '';
-                const rank = p.core_rank || (p.conference && p.conference.core_rank) || '';
-                const badgeClass = rank === 'A*' ? 'badge-a-star' : (rank === 'A' ? 'badge-a' : 'badge-journal');
-                return `
-                  <li class="py-2.5 space-y-1">
-                    <p class="text-xs font-semibold text-gray-800 leading-snug">${escapeHTML(p.title)}</p>
-                    <div class="flex items-center gap-2 text-2xs text-gray-500">
-                      ${rank ? `<span class="px-1.5 py-0.2 rounded font-bold ${badgeClass}">${escapeHTML(rank)}</span>` : ''}
-                      <span class="font-medium text-teal-700">${escapeHTML(conf)}</span>
-                      <span>${escapeHTML(p.year || '')}</span>
-                    </div>
-                  </li>
-                `;
-              }).join('') || '<li class="py-4 text-xs text-gray-400 text-center">No publications match active filters</li>'}
-            </ul>
+
+            <!-- Pagination Bar Inst 1 -->
+            ${filteredPubs1.length > 0 ? `
+              <div class="flex items-center justify-between pt-3 border-t border-gray-100 text-2xs text-gray-500 mt-2">
+                <span>Showing ${filteredPubs1.length === 0 ? 0 : startIdx1 + 1}–${endIdx1} of ${filteredPubs1.length}</span>
+                <div class="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    id="inst1-prev-page-btn"
+                    class="px-2.5 py-1 rounded-md border border-gray-200 hover:bg-gray-50 text-gray-700 disabled:opacity-40 disabled:cursor-not-allowed font-medium transition-colors"
+                    ${this.inst1PubPage <= 1 ? 'disabled' : ''}
+                  >
+                    Previous
+                  </button>
+                  <span class="px-2 py-1 font-mono font-semibold text-gray-700">
+                    ${this.inst1PubPage} / ${totalPages1}
+                  </span>
+                  <button
+                    type="button"
+                    id="inst1-next-page-btn"
+                    class="px-2.5 py-1 rounded-md border border-gray-200 hover:bg-gray-50 text-gray-700 disabled:opacity-40 disabled:cursor-not-allowed font-medium transition-colors"
+                    ${this.inst1PubPage >= totalPages1 ? 'disabled' : ''}
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            ` : ''}
           </div>
 
           <!-- Inst 2 Publications -->
-          <div class="card p-6 bg-white rounded-2xl border border-gray-100 shadow-sm space-y-3">
-            <div class="flex items-center justify-between border-b border-gray-100 pb-2">
-              <h4 class="text-sm font-bold text-gray-900">Publications · ${escapeHTML(i2.name)}</h4>
-              <span class="text-xs font-mono text-blue-700 font-semibold">${filteredPubs2.length} papers</span>
+          <div class="card p-6 bg-white rounded-2xl border border-gray-100 shadow-sm space-y-3 flex flex-col justify-between">
+            <div>
+              <div class="flex items-center justify-between border-b border-gray-100 pb-2 mb-2">
+                <h4 class="text-sm font-bold text-gray-900">Publications · ${escapeHTML(i2.name)}</h4>
+                <span class="text-xs font-mono text-blue-700 font-semibold">${filteredPubs2.length} papers</span>
+              </div>
+              <ul class="divide-y divide-gray-100">
+                ${paginatedPubs2.map(p => {
+                  const conf = p.conference?.acronym || p.conference || p.venue || '';
+                  const rank = p.core_rank || (p.conference && p.conference.core_rank) || '';
+                  const badgeClass = rank === 'A*' ? 'badge-a-star' : (rank === 'A' ? 'badge-a' : 'badge-journal');
+                  const areaLabel = p.area ? `Area: ${p.area}` : 'Interdisciplinary / Other';
+                  return `
+                    <li class="py-2.5 space-y-1">
+                      <p class="text-xs font-semibold text-gray-800 leading-snug">${escapeHTML(p.title)}</p>
+                      <div class="flex items-center gap-2 text-2xs text-gray-500 flex-wrap">
+                        ${rank ? `<span class="px-1.5 py-0.2 rounded font-bold ${badgeClass}">${escapeHTML(rank)}</span>` : ''}
+                        ${conf ? `<span class="font-medium text-blue-700">${escapeHTML(conf)}</span>` : ''}
+                        <span>${escapeHTML(p.year || '')}</span>
+                        <span class="px-1.5 py-0.2 rounded bg-gray-100 text-gray-600 text-3xs font-medium">${escapeHTML(areaLabel)}</span>
+                      </div>
+                    </li>
+                  `;
+                }).join('') || '<li class="py-4 text-xs text-gray-400 text-center">No publications match active filters</li>'}
+              </ul>
             </div>
-            <ul class="divide-y divide-gray-100">
-              ${filteredPubs2.slice(0, 8).map(p => {
-                const conf = p.conference?.acronym || p.conference || p.venue || '';
-                const rank = p.core_rank || (p.conference && p.conference.core_rank) || '';
-                const badgeClass = rank === 'A*' ? 'badge-a-star' : (rank === 'A' ? 'badge-a' : 'badge-journal');
-                return `
-                  <li class="py-2.5 space-y-1">
-                    <p class="text-xs font-semibold text-gray-800 leading-snug">${escapeHTML(p.title)}</p>
-                    <div class="flex items-center gap-2 text-2xs text-gray-500">
-                      ${rank ? `<span class="px-1.5 py-0.2 rounded font-bold ${badgeClass}">${escapeHTML(rank)}</span>` : ''}
-                      <span class="font-medium text-blue-700">${escapeHTML(conf)}</span>
-                      <span>${escapeHTML(p.year || '')}</span>
-                    </div>
-                  </li>
-                `;
-              }).join('') || '<li class="py-4 text-xs text-gray-400 text-center">No publications match active filters</li>'}
-            </ul>
+
+            <!-- Pagination Bar Inst 2 -->
+            ${filteredPubs2.length > 0 ? `
+              <div class="flex items-center justify-between pt-3 border-t border-gray-100 text-2xs text-gray-500 mt-2">
+                <span>Showing ${filteredPubs2.length === 0 ? 0 : startIdx2 + 1}–${endIdx2} of ${filteredPubs2.length}</span>
+                <div class="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    id="inst2-prev-page-btn"
+                    class="px-2.5 py-1 rounded-md border border-gray-200 hover:bg-gray-50 text-gray-700 disabled:opacity-40 disabled:cursor-not-allowed font-medium transition-colors"
+                    ${this.inst2PubPage <= 1 ? 'disabled' : ''}
+                  >
+                    Previous
+                  </button>
+                  <span class="px-2 py-1 font-mono font-semibold text-gray-700">
+                    ${this.inst2PubPage} / ${totalPages2}
+                  </span>
+                  <button
+                    type="button"
+                    id="inst2-next-page-btn"
+                    class="px-2.5 py-1 rounded-md border border-gray-200 hover:bg-gray-50 text-gray-700 disabled:opacity-40 disabled:cursor-not-allowed font-medium transition-colors"
+                    ${this.inst2PubPage >= totalPages2 ? 'disabled' : ''}
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            ` : ''}
           </div>
+
         </div>
 
       </div>
@@ -1033,6 +1053,45 @@ export default class CompareWidget {
         barBtn.className = 'px-2.5 py-1 text-xs font-semibold rounded-md transition-all bg-white text-teal-700 shadow-sm';
         radarBtn.className = 'px-2.5 py-1 text-xs font-semibold rounded-md transition-all text-gray-500 hover:text-gray-900';
         this._renderDisciplineChart(allDisciplineNames, areas1, areas2);
+      });
+    }
+
+    // Attach publication pagination listeners
+    const i1Prev = container.querySelector('#inst1-prev-page-btn');
+    const i1Next = container.querySelector('#inst1-next-page-btn');
+    if (i1Prev) {
+      i1Prev.addEventListener('click', () => {
+        if (this.inst1PubPage > 1) {
+          this.inst1PubPage--;
+          this._renderInstitutionComparison();
+        }
+      });
+    }
+    if (i1Next) {
+      i1Next.addEventListener('click', () => {
+        if (this.inst1PubPage < totalPages1) {
+          this.inst1PubPage++;
+          this._renderInstitutionComparison();
+        }
+      });
+    }
+
+    const i2Prev = container.querySelector('#inst2-prev-page-btn');
+    const i2Next = container.querySelector('#inst2-next-page-btn');
+    if (i2Prev) {
+      i2Prev.addEventListener('click', () => {
+        if (this.inst2PubPage > 1) {
+          this.inst2PubPage--;
+          this._renderInstitutionComparison();
+        }
+      });
+    }
+    if (i2Next) {
+      i2Next.addEventListener('click', () => {
+        if (this.inst2PubPage < totalPages2) {
+          this.inst2PubPage++;
+          this._renderInstitutionComparison();
+        }
       });
     }
 
@@ -1214,8 +1273,8 @@ export default class CompareWidget {
   // ══════════════════════════════════════════════════════════════════════════
 
   _renderFacultySelectRow() {
-    const name1 = this.fac1 ? escapeHTML(this.fac1.name) : 'Rajiv Ratn Shah';
-    const name2 = this.fac2 ? escapeHTML(this.fac2.name) : 'Sunita Sarawagi';
+    const name1 = this.fac1 ? escapeHTML(this.fac1.name) : '';
+    const name2 = this.fac2 ? escapeHTML(this.fac2.name) : '';
 
     return `
       <div class="cmp-grid-2 bg-white border border-gray-100 rounded-2xl p-6 shadow-sm">
@@ -1225,13 +1284,13 @@ export default class CompareWidget {
             <label for="search-fac-1" class="text-xs text-teal-800 font-bold uppercase tracking-wider flex items-center gap-1.5">
               <span class="w-2.5 h-2.5 rounded-full bg-teal-500"></span> Faculty Member 1 (Teal)
             </label>
-            <span class="text-2xs text-gray-400">Click input for instant suggestions</span>
+            <span class="text-2xs text-gray-400">Click input for suggestions or type</span>
           </div>
           <div class="relative">
             <input
               type="text"
               id="search-fac-1"
-              placeholder="Click for suggestions (e.g. Rajiv Ratn Shah) or type..."
+              placeholder="Type to search faculty (e.g. Rajiv Ratn Shah)..."
               value="${name1}"
               autocomplete="off"
               class="w-full pl-9 pr-3 py-2.5 text-xs rounded-xl border border-gray-200 bg-white text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 shadow-sm"
@@ -1249,13 +1308,13 @@ export default class CompareWidget {
             <label for="search-fac-2" class="text-xs text-blue-800 font-bold uppercase tracking-wider flex items-center gap-1.5">
               <span class="w-2.5 h-2.5 rounded-full bg-blue-500"></span> Faculty Member 2 (Blue)
             </label>
-            <span class="text-2xs text-gray-400">Click input for instant suggestions</span>
+            <span class="text-2xs text-gray-400">Click input for suggestions or type</span>
           </div>
           <div class="relative">
             <input
               type="text"
               id="search-fac-2"
-              placeholder="Click for suggestions (e.g. Sunita Sarawagi) or type..."
+              placeholder="Type to search faculty (e.g. Sunita Sarawagi)..."
               value="${name2}"
               autocomplete="off"
               class="w-full pl-9 pr-3 py-2.5 text-xs rounded-xl border border-gray-200 bg-white text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 shadow-sm"
@@ -1278,6 +1337,7 @@ export default class CompareWidget {
       suggestions: SUGGESTED_FACULTY,
       onSelect: async (item) => {
         this.fac1 = await fetchJSON(`${this.apiBase}/faculty/${item.id}/`);
+        this.fac1PubPage = 1;
         this._renderFacultyComparison();
       }
     });
@@ -1289,6 +1349,7 @@ export default class CompareWidget {
       suggestions: SUGGESTED_FACULTY,
       onSelect: async (item) => {
         this.fac2 = await fetchJSON(`${this.apiBase}/faculty/${item.id}/`);
+        this.fac2PubPage = 1;
         this._renderFacultyComparison();
       }
     });
@@ -1299,14 +1360,7 @@ export default class CompareWidget {
     if (!container) return;
 
     if (!this.fac1 || !this.fac2) {
-      container.innerHTML = `
-        <div class="card p-12 text-center text-gray-400 bg-white rounded-2xl border border-gray-100 shadow-sm">
-          <svg class="w-12 h-12 mx-auto text-gray-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/>
-          </svg>
-          <p class="text-sm font-semibold text-gray-600">Select Faculty Members</p>
-          <p class="text-xs text-gray-400 mt-1 max-w-sm mx-auto">Select two faculty members above to analyze their verified publications and research metrics side-by-side.</p>
-        </div>`;
+      container.innerHTML = this._renderEmptyStateHTML();
       return;
     }
 
@@ -1394,6 +1448,19 @@ export default class CompareWidget {
 
     const instName1 = typeof f1.institution === 'object' ? (f1.institution?.name || '') : (f1.institution || '');
     const instName2 = typeof f2.institution === 'object' ? (f2.institution?.name || '') : (f2.institution || '');
+
+    // Pagination slicing for faculty publications
+    const totalPages1 = Math.max(1, Math.ceil(pubs1.length / PUBS_PER_PAGE));
+    if (this.fac1PubPage > totalPages1) this.fac1PubPage = totalPages1;
+    const startIdx1 = (this.fac1PubPage - 1) * PUBS_PER_PAGE;
+    const endIdx1 = Math.min(startIdx1 + PUBS_PER_PAGE, pubs1.length);
+    const paginatedPubs1 = pubs1.slice(startIdx1, endIdx1);
+
+    const totalPages2 = Math.max(1, Math.ceil(pubs2.length / PUBS_PER_PAGE));
+    if (this.fac2PubPage > totalPages2) this.fac2PubPage = totalPages2;
+    const startIdx2 = (this.fac2PubPage - 1) * PUBS_PER_PAGE;
+    const endIdx2 = Math.min(startIdx2 + PUBS_PER_PAGE, pubs2.length);
+    const paginatedPubs2 = pubs2.slice(startIdx2, endIdx2);
 
     container.innerHTML = `
       <div class="space-y-6">
@@ -1527,59 +1594,164 @@ export default class CompareWidget {
           </div>
         ` : ''}
 
-        <!-- Side-by-Side Filtered Publications List (cmp-grid-2) -->
+        <!-- Side-by-Side Filtered Publications List with Pagination (cmp-grid-2) -->
         <div class="cmp-grid-2">
+          
           <!-- Faculty 1 Publications -->
-          <div class="card p-6 bg-white rounded-2xl border border-gray-100 shadow-sm space-y-3">
-            <div class="flex items-center justify-between border-b border-gray-100 pb-2">
-              <h4 class="text-sm font-bold text-gray-900">Papers · ${escapeHTML(f1.name)}</h4>
-              <span class="text-xs font-mono text-teal-700 font-semibold">${pubs1.length} papers</span>
+          <div class="card p-6 bg-white rounded-2xl border border-gray-100 shadow-sm space-y-3 flex flex-col justify-between">
+            <div>
+              <div class="flex items-center justify-between border-b border-gray-100 pb-2 mb-2">
+                <h4 class="text-sm font-bold text-gray-900">Papers · ${escapeHTML(f1.name)}</h4>
+                <span class="text-xs font-mono text-teal-700 font-semibold">${pubs1.length} papers</span>
+              </div>
+              <ul class="divide-y divide-gray-100">
+                ${paginatedPubs1.map(p => {
+                  const badgeClass = p.rank === 'A*' ? 'badge-a-star' : (p.rank === 'A' ? 'badge-a' : 'badge-journal');
+                  const areaLabel = p.area ? `Area: ${p.area}` : 'Interdisciplinary / Other';
+                  return `
+                    <li class="py-2.5 space-y-1">
+                      <p class="text-xs font-semibold text-gray-800 leading-snug">${escapeHTML(p.title)}</p>
+                      <div class="flex items-center gap-2 text-2xs text-gray-500 flex-wrap">
+                        ${p.rank ? `<span class="px-1.5 py-0.2 rounded font-bold ${badgeClass}">${escapeHTML(p.rank)}</span>` : ''}
+                        <span class="font-medium text-teal-700">${escapeHTML(p.venue)}</span>
+                        <span>${escapeHTML(p.year)}</span>
+                        <span class="text-gray-400">· credit: ${Number(p.credit).toFixed(2)}</span>
+                        <span class="px-1.5 py-0.2 rounded bg-gray-100 text-gray-600 text-3xs font-medium">${escapeHTML(areaLabel)}</span>
+                      </div>
+                    </li>
+                  `;
+                }).join('') || '<li class="py-4 text-xs text-gray-400 text-center">No publications match active filters</li>'}
+              </ul>
             </div>
-            <ul class="divide-y divide-gray-100">
-              ${pubs1.slice(0, 10).map(p => {
-                const badgeClass = p.rank === 'A*' ? 'badge-a-star' : (p.rank === 'A' ? 'badge-a' : 'badge-journal');
-                return `
-                  <li class="py-2.5 space-y-1">
-                    <p class="text-xs font-semibold text-gray-800 leading-snug">${escapeHTML(p.title)}</p>
-                    <div class="flex items-center gap-2 text-2xs text-gray-500">
-                      ${p.rank ? `<span class="px-1.5 py-0.2 rounded font-bold ${badgeClass}">${escapeHTML(p.rank)}</span>` : ''}
-                      <span class="font-medium text-teal-700">${escapeHTML(p.venue)}</span>
-                      <span>${escapeHTML(p.year)}</span>
-                      <span class="text-gray-400">· credit: ${Number(p.credit).toFixed(2)}</span>
-                    </div>
-                  </li>
-                `;
-              }).join('') || '<li class="py-4 text-xs text-gray-400 text-center">No publications match active filters</li>'}
-            </ul>
+
+            <!-- Pagination Bar Fac 1 -->
+            ${pubs1.length > 0 ? `
+              <div class="flex items-center justify-between pt-3 border-t border-gray-100 text-2xs text-gray-500 mt-2">
+                <span>Showing ${pubs1.length === 0 ? 0 : startIdx1 + 1}–${endIdx1} of ${pubs1.length}</span>
+                <div class="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    id="fac1-prev-page-btn"
+                    class="px-2.5 py-1 rounded-md border border-gray-200 hover:bg-gray-50 text-gray-700 disabled:opacity-40 disabled:cursor-not-allowed font-medium transition-colors"
+                    ${this.fac1PubPage <= 1 ? 'disabled' : ''}
+                  >
+                    Previous
+                  </button>
+                  <span class="px-2 py-1 font-mono font-semibold text-gray-700">
+                    ${this.fac1PubPage} / ${totalPages1}
+                  </span>
+                  <button
+                    type="button"
+                    id="fac1-next-page-btn"
+                    class="px-2.5 py-1 rounded-md border border-gray-200 hover:bg-gray-50 text-gray-700 disabled:opacity-40 disabled:cursor-not-allowed font-medium transition-colors"
+                    ${this.fac1PubPage >= totalPages1 ? 'disabled' : ''}
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            ` : ''}
           </div>
 
           <!-- Faculty 2 Publications -->
-          <div class="card p-6 bg-white rounded-2xl border border-gray-100 shadow-sm space-y-3">
-            <div class="flex items-center justify-between border-b border-gray-100 pb-2">
-              <h4 class="text-sm font-bold text-gray-900">Papers · ${escapeHTML(f2.name)}</h4>
-              <span class="text-xs font-mono text-blue-700 font-semibold">${pubs2.length} papers</span>
+          <div class="card p-6 bg-white rounded-2xl border border-gray-100 shadow-sm space-y-3 flex flex-col justify-between">
+            <div>
+              <div class="flex items-center justify-between border-b border-gray-100 pb-2 mb-2">
+                <h4 class="text-sm font-bold text-gray-900">Papers · ${escapeHTML(f2.name)}</h4>
+                <span class="text-xs font-mono text-blue-700 font-semibold">${pubs2.length} papers</span>
+              </div>
+              <ul class="divide-y divide-gray-100">
+                ${paginatedPubs2.map(p => {
+                  const badgeClass = p.rank === 'A*' ? 'badge-a-star' : (p.rank === 'A' ? 'badge-a' : 'badge-journal');
+                  const areaLabel = p.area ? `Area: ${p.area}` : 'Interdisciplinary / Other';
+                  return `
+                    <li class="py-2.5 space-y-1">
+                      <p class="text-xs font-semibold text-gray-800 leading-snug">${escapeHTML(p.title)}</p>
+                      <div class="flex items-center gap-2 text-2xs text-gray-500 flex-wrap">
+                        ${p.rank ? `<span class="px-1.5 py-0.2 rounded font-bold ${badgeClass}">${escapeHTML(p.rank)}</span>` : ''}
+                        <span class="font-medium text-blue-700">${escapeHTML(p.venue)}</span>
+                        <span>${escapeHTML(p.year)}</span>
+                        <span class="text-gray-400">· credit: ${Number(p.credit).toFixed(2)}</span>
+                        <span class="px-1.5 py-0.2 rounded bg-gray-100 text-gray-600 text-3xs font-medium">${escapeHTML(areaLabel)}</span>
+                      </div>
+                    </li>
+                  `;
+                }).join('') || '<li class="py-4 text-xs text-gray-400 text-center">No publications match active filters</li>'}
+              </ul>
             </div>
-            <ul class="divide-y divide-gray-100">
-              ${pubs2.slice(0, 10).map(p => {
-                const badgeClass = p.rank === 'A*' ? 'badge-a-star' : (p.rank === 'A' ? 'badge-a' : 'badge-journal');
-                return `
-                  <li class="py-2.5 space-y-1">
-                    <p class="text-xs font-semibold text-gray-800 leading-snug">${escapeHTML(p.title)}</p>
-                    <div class="flex items-center gap-2 text-2xs text-gray-500">
-                      ${p.rank ? `<span class="px-1.5 py-0.2 rounded font-bold ${badgeClass}">${escapeHTML(p.rank)}</span>` : ''}
-                      <span class="font-medium text-blue-700">${escapeHTML(p.venue)}</span>
-                      <span>${escapeHTML(p.year)}</span>
-                      <span class="text-gray-400">· credit: ${Number(p.credit).toFixed(2)}</span>
-                    </div>
-                  </li>
-                `;
-              }).join('') || '<li class="py-4 text-xs text-gray-400 text-center">No publications match active filters</li>'}
-            </ul>
+
+            <!-- Pagination Bar Fac 2 -->
+            ${pubs2.length > 0 ? `
+              <div class="flex items-center justify-between pt-3 border-t border-gray-100 text-2xs text-gray-500 mt-2">
+                <span>Showing ${pubs2.length === 0 ? 0 : startIdx2 + 1}–${endIdx2} of ${pubs2.length}</span>
+                <div class="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    id="fac2-prev-page-btn"
+                    class="px-2.5 py-1 rounded-md border border-gray-200 hover:bg-gray-50 text-gray-700 disabled:opacity-40 disabled:cursor-not-allowed font-medium transition-colors"
+                    ${this.fac2PubPage <= 1 ? 'disabled' : ''}
+                  >
+                    Previous
+                  </button>
+                  <span class="px-2 py-1 font-mono font-semibold text-gray-700">
+                    ${this.fac2PubPage} / ${totalPages2}
+                  </span>
+                  <button
+                    type="button"
+                    id="fac2-next-page-btn"
+                    class="px-2.5 py-1 rounded-md border border-gray-200 hover:bg-gray-50 text-gray-700 disabled:opacity-40 disabled:cursor-not-allowed font-medium transition-colors"
+                    ${this.fac2PubPage >= totalPages2 ? 'disabled' : ''}
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            ` : ''}
           </div>
+
         </div>
 
       </div>
     `;
+
+    // Attach faculty publication pagination listeners
+    const f1Prev = container.querySelector('#fac1-prev-page-btn');
+    const f1Next = container.querySelector('#fac1-next-page-btn');
+    if (f1Prev) {
+      f1Prev.addEventListener('click', () => {
+        if (this.fac1PubPage > 1) {
+          this.fac1PubPage--;
+          this._renderFacultyComparison();
+        }
+      });
+    }
+    if (f1Next) {
+      f1Next.addEventListener('click', () => {
+        if (this.fac1PubPage < totalPages1) {
+          this.fac1PubPage++;
+          this._renderFacultyComparison();
+        }
+      });
+    }
+
+    const f2Prev = container.querySelector('#fac2-prev-page-btn');
+    const f2Next = container.querySelector('#fac2-next-page-btn');
+    if (f2Prev) {
+      f2Prev.addEventListener('click', () => {
+        if (this.fac2PubPage > 1) {
+          this.fac2PubPage--;
+          this._renderFacultyComparison();
+        }
+      });
+    }
+    if (f2Next) {
+      f2Next.addEventListener('click', () => {
+        if (this.fac2PubPage < totalPages2) {
+          this.fac2PubPage++;
+          this._renderFacultyComparison();
+        }
+      });
+    }
   }
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -1593,26 +1765,21 @@ export default class CompareWidget {
 
     let debounce = null;
 
-    const renderDropdownList = (items, isSuggested = false) => {
+    const renderDropdownList = (items) => {
       if (items.length === 0) {
         resultsDiv.innerHTML = `<p class="p-3 text-xs text-gray-400 text-center">No matching results found.</p>`;
         resultsDiv.classList.remove('hidden');
         return;
       }
 
-      const headerHTML = isSuggested ? `
-        <div class="px-3.5 py-2 bg-gray-50 border-b border-gray-100 text-2xs font-bold text-gray-500 uppercase tracking-wider flex items-center justify-between">
-          <span>✨ Featured Suggestions</span>
-          <span class="text-3xs text-teal-600 font-semibold">Quick Select</span>
-        </div>` : '';
-
       resultsDiv.innerHTML = `
-        ${headerHTML}
+        <div class="px-3.5 py-2 bg-gray-50 border-b border-gray-100 text-2xs font-bold text-gray-500 uppercase tracking-wider">
+          ${input.value.trim() ? 'Search Results' : 'Suggestions (Click to Select)'}
+        </div>
         ${items.map(item => {
           const name = escapeHTML(item.name || item.full_name || '');
           const sub = escapeHTML(item.subtitle || item.inst || (typeof item.institution === 'object' ? item.institution?.name : item.institution) || item.designation || '');
           const score = item.score ? `<span class="text-xs font-mono font-bold text-teal-700 bg-teal-50 px-2 py-0.5 rounded-full">${Number(item.score).toFixed(2)} pts</span>` : '';
-          const isFeatured = item.featured ? `<span class="px-1.5 py-0.5 rounded text-3xs font-bold bg-teal-600 text-white uppercase ml-1.5">Featured</span>` : '';
 
           return `
             <button
@@ -1621,8 +1788,8 @@ export default class CompareWidget {
               data-item='${JSON.stringify({ id: item.id, name: item.name })}'
             >
               <div class="min-w-0 flex-1">
-                <p class="text-xs font-bold text-gray-800 flex items-center truncate">
-                  ${name} ${isFeatured}
+                <p class="text-xs font-bold text-gray-800 truncate">
+                  ${name}
                 </p>
                 ${sub ? `<p class="text-xs-plus text-gray-400 mt-0.5 truncate">${sub}</p>` : ''}
               </div>
@@ -1646,7 +1813,7 @@ export default class CompareWidget {
     // Show suggestions on focus / click
     const showSuggestions = () => {
       if (!input.value.trim()) {
-        renderDropdownList(suggestions, true);
+        renderDropdownList(suggestions);
       }
     };
 
@@ -1656,14 +1823,14 @@ export default class CompareWidget {
     // Live dynamic search when typing
     const performSearch = async (val) => {
       if (!val.trim()) {
-        renderDropdownList(suggestions, true);
+        renderDropdownList(suggestions);
         return;
       }
 
       try {
         const data = await fetchJSON(`${this.apiBase}/${endpoint}/?search=${encodeURIComponent(val.trim())}`);
         const items = Array.isArray(data) ? data : (data?.results || []);
-        renderDropdownList(items.slice(0, 10), false);
+        renderDropdownList(items.slice(0, 10));
       } catch (e) {
         console.error(`[SPARK] autocomplete error for ${endpoint}:`, e);
       }
