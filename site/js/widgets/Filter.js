@@ -118,31 +118,33 @@ export default class FilterWidget {
     this.container.innerHTML = `
       <div class="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm space-y-4">
         
-        <!-- Top bar: Year range (always visible if enabled) and Expand / Apply buttons -->
-        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <!-- Top bar: Year range, CORE Rank, and Action buttons on a single unified line -->
+        <div class="flex flex-row items-center justify-between gap-3 flex-wrap lg:flex-nowrap">
           
-          <!-- Year Inputs or Title -->
-          <div class="flex items-center gap-3">
+          <!-- Left: Year Inputs & CORE Rank -->
+          <div class="flex items-center gap-3 flex-wrap">
             ${this.showYearRange ? `
-              <span class="text-sm font-semibold text-gray-700">Year Range:</span>
               <div class="flex items-center gap-2">
-                <input
-                  type="number" id="start-year"
-                  value="${this.state.startYear}"
-                  min="1990" max="${currentYear}"
-                  class="w-24 px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm text-center focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
-                  aria-label="Start year"
-                >
-                <span class="text-gray-400">—</span>
-                <input
-                  type="number" id="end-year"
-                  value="${this.state.endYear}"
-                  min="1990" max="${currentYear}"
-                  class="w-24 px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm text-center focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
-                  aria-label="End year"
-                >
+                <span class="text-sm font-semibold text-gray-700 whitespace-nowrap">Year Range:</span>
+                <div class="flex items-center gap-1.5">
+                  <input
+                    type="number" id="start-year"
+                    value="${this.state.startYear}"
+                    min="1990" max="${currentYear}"
+                    class="w-20 px-2 py-1.5 border border-gray-300 rounded-lg text-xs font-mono text-center focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                    aria-label="Start year"
+                  >
+                  <span class="text-gray-400">—</span>
+                  <input
+                    type="number" id="end-year"
+                    value="${this.state.endYear}"
+                    min="1990" max="${currentYear}"
+                    class="w-20 px-2 py-1.5 border border-gray-300 rounded-lg text-xs font-mono text-center focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                    aria-label="End year"
+                  >
+                </div>
+                <p id="year-error" class="text-xs text-red-500 hidden ml-1" role="alert"></p>
               </div>
-              <p id="year-error" class="text-xs text-red-500 hidden ml-2" role="alert"></p>
             ` : `
               <span class="text-sm font-bold text-gray-800">Filter Venues</span>
             `}
@@ -152,7 +154,7 @@ export default class FilterWidget {
               <label for="filter-rank-select" class="text-sm font-semibold text-gray-700 whitespace-nowrap">CORE Rank:</label>
               <select
                 id="filter-rank-select"
-                class="px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm bg-white text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 transition-all cursor-pointer"
+                class="px-2.5 py-1.5 border border-gray-300 rounded-lg text-xs bg-white text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 transition-all cursor-pointer"
                 aria-label="Filter by CORE rank or venue type"
               >
                 <option value="all" ${this.state.rank === 'all' ? 'selected' : ''}>All Ranks</option>
@@ -163,28 +165,28 @@ export default class FilterWidget {
             </div>
           </div>
 
-          <!-- Buttons -->
-          <div class="flex items-center gap-2 self-end md:self-auto">
+          <!-- Right: Action Buttons -->
+          <div class="flex items-center gap-2 flex-shrink-0">
             <button
               id="btn-toggle-filters"
-              class="px-3.5 py-1.5 text-sm font-medium border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-1.5"
+              class="px-3 py-1.5 text-xs font-medium border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-1.5"
               type="button"
             >
               <span>⚙️ Research Areas</span>
-              <svg id="chevron-icon" class="w-4 h-4 transition-transform duration-200 ${isCollapsed ? '' : 'rotate-180'}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg id="chevron-icon" class="w-3.5 h-3.5 transition-transform duration-200 ${isCollapsed ? '' : 'rotate-180'}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
               </svg>
             </button>
             <button
               id="btn-clear-filters"
-              class="px-3.5 py-1.5 text-sm font-medium border border-gray-200 text-gray-500 rounded-lg hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors"
+              class="px-3 py-1.5 text-xs font-medium border border-gray-200 text-gray-500 rounded-lg hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors"
               type="button"
             >
               Clear
             </button>
             <button
               id="btn-apply-filters"
-              class="px-4 py-1.5 text-sm font-semibold text-white bg-teal-600 hover:bg-teal-700 rounded-lg shadow-sm hover:shadow transition-all"
+              class="px-3.5 py-1.5 text-xs font-semibold text-white bg-teal-600 hover:bg-teal-700 rounded-lg shadow-sm hover:shadow transition-all"
               type="button"
             >
               Apply Filters
