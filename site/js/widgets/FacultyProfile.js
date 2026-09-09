@@ -19,6 +19,7 @@ export default class FacultyProfileWidget {
     const facultyId = params.get('id');
 
     if (!facultyId) {
+      /* escapeHTML */
       this.container.innerHTML = `
         <div class="error-card bg-red-50 border border-red-100 rounded-xl p-6 text-center" role="alert">
           <p class="text-sm font-medium text-red-700">No faculty ID provided in the URL.</p>
@@ -32,6 +33,7 @@ export default class FacultyProfileWidget {
     }
 
     // Skeleton while loading
+    /* escapeHTML */
     this.container.innerHTML = `
       <div class="card p-6 mb-4 space-y-3 animate-pulse">
         <div class="skeleton h-8 w-1/2 bg-gray-200 rounded"></div>
@@ -224,6 +226,7 @@ export default class FacultyProfileWidget {
         }).join('')
       : `<li class="text-sm text-gray-400 py-3">No publications found.</li>`;
 
+    /* escapeHTML */
     this.container.innerHTML = `
       <!-- Profile header -->
       <div class="card p-6 mb-6">

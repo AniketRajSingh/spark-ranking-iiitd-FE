@@ -19,9 +19,9 @@ export default async function fetchJSON(url, opts = {}) {
   } catch (err) {
     clearTimeout(timer);
     if (err.name === 'AbortError') {
-      console.warn(`[SPARK] fetchJSON timed out after ${timeout}ms →`, url);
+      console.warn('[SPARK] fetchJSON timed out:', timeout, url);
     } else {
-      console.warn('[SPARK] fetchJSON error →', url, err.message);
+      console.warn('[SPARK] fetchJSON error:', url, err ? err.message : '');
     }
     return null;
   }
