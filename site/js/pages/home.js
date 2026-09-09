@@ -5,6 +5,7 @@ import { groupAreasByBroadCategory, expandToSubCodes } from '../utils/areaTaxono
 import FilterWidget from '../widgets/Filter.js';
 import RankingTableWidget from '../widgets/RankingTable.js';
 import SearchBarWidget from '../widgets/SearchBar.js';
+import INSTITUTION_SCORES from '../data/institutionScores.js';
 
 document.addEventListener('DOMContentLoaded', async () => {
   const apiBase = (window.SPARK_CONFIG && window.SPARK_CONFIG.API_BASE) || null;
@@ -101,22 +102,55 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (!data) throw new Error('Could not fetch rankings data');
       const normalised = normaliseRankings(data);
 
-      // Filter out 0 scores only if filters are active (non-default state)
-      const currentYear = new Date().getFullYear();
-      const isDefault = activeFilters.startYear === 2015 &&
-                        activeFilters.endYear === currentYear &&
-                        (!activeFilters.rank || activeFilters.rank === 'all') &&
-                        (!activeFilters.areas || activeFilters.areas.size === 0);
-
+      let scoreLabel = 'SPARK Score';
       let finalData = normalised;
-      if (!isDefault) {
-        finalData = normalised.filter(item => {
-          const scoreNum = parseFloat(item.score);
-          return !isNaN(scoreNum) && scoreNum > 0;
-        });
+
+      if (activeFilters.rank === 'A*') {
+        scoreLabel = 'CORE A* Score';
+        finalData = finalData.map(item => {
+          const instId = item.institution?.id || item.id;
+          const tier = INSTITUTION_SCORES[instId];
+          const score = tier ? tier.a_star_score : item.score;
+          return { ...item, score };
+        }).filter(item => Number(item.score) > 0);
+        finalData.sort((a, b) => Number(b.score) - Number(a.score));
+        finalData.forEach((item, idx) => { item.rank = idx + 1; });
+      } else if (activeFilters.rank === 'A') {
+        scoreLabel = 'CORE A Score';
+        finalData = finalData.map(item => {
+          const instId = item.institution?.id || item.id;
+          const tier = INSTITUTION_SCORES[instId];
+          const score = tier ? tier.a_score : item.score;
+          return { ...item, score };
+        }).filter(item => Number(item.score) > 0);
+        finalData.sort((a, b) => Number(b.score) - Number(a.score));
+        finalData.forEach((item, idx) => { item.rank = idx + 1; });
+      } else if (activeFilters.rank === 'Journal') {
+        scoreLabel = 'Journals Score';
+        finalData = finalData.map(item => {
+          const instId = item.institution?.id || item.id;
+          const tier = INSTITUTION_SCORES[instId];
+          const score = tier ? tier.journal_score : item.score;
+          return { ...item, score };
+        }).filter(item => Number(item.score) > 0);
+        finalData.sort((a, b) => Number(b.score) - Number(a.score));
+        finalData.forEach((item, idx) => { item.rank = idx + 1; });
+      } else {
+        // Filter out 0 scores only if filters are active (non-default state)
+        const currentYear = new Date().getFullYear();
+        const isDefault = activeFilters.startYear === 2015 &&
+                          activeFilters.endYear === currentYear &&
+                          (!activeFilters.areas || activeFilters.areas.size === 0);
+
+        if (!isDefault) {
+          finalData = normalised.filter(item => {
+            const scoreNum = parseFloat(item.score);
+            return !isNaN(scoreNum) && scoreNum > 0;
+          });
+        }
       }
 
-      rankingTableWidget.setData(finalData);
+      rankingTableWidget.setData(finalData, '', scoreLabel);
       setResultsCount(finalData.length);
     } catch (e) {
       console.error('[SPARK] /rankings/ error:', e.message);

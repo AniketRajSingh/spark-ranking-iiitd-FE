@@ -4,6 +4,7 @@
 import { escapeHTML } from '../utils/sanitize.js';
 import { clearBusy } from '../utils/errorCard.js';
 import { renderPaginationHTML, attachPaginationListeners } from './Pagination.js';
+import FACULTY_SCORES from '../data/facultyScores.js';
 
 export default class FacultyListWidget {
   constructor(containerId, filters, serverTopData = null, searchQuery = '') {
@@ -68,6 +69,22 @@ export default class FacultyListWidget {
       });
     }
 
+    const rankFilter = this.filters?.rank || 'all';
+    let scoreSuffix = 'pts';
+
+    if (rankFilter === 'A*') {
+      scoreSuffix = 'A* pts';
+      flat = flat.map(f => {
+        const aStar = f.a_star_score != null ? f.a_star_score : (FACULTY_SCORES[f.id]?.a_star_score || 0);
+        return { ...f, score: aStar };
+      }).filter(f => Number(f.score) > 0);
+    } else if (rankFilter === 'A') {
+      scoreSuffix = 'A pts';
+      flat = flat.map(f => {
+        const aScore = f.a_score != null ? f.a_score : (FACULTY_SCORES[f.id]?.a_score || 0);
+        return { ...f, score: aScore };
+      }).filter(f => Number(f.score) > 0);
+    }
 
     if (flat.length === 0) {
       const emptyMsg = this.searchQuery
@@ -85,7 +102,7 @@ export default class FacultyListWidget {
       return;
     }
 
-    flat.sort((a, b) => (b.score || 0) - (a.score || 0));
+    flat.sort((a, b) => (Number(b.score) || 0) - (Number(a.score) || 0));
 
     const totalPages = Math.ceil(flat.length / this.pageSize);
     if (this.page > totalPages) this.page = totalPages;
@@ -114,7 +131,7 @@ export default class FacultyListWidget {
           </div>
         </div>
         <span class="flex-shrink-0 text-xs font-semibold tabular-nums text-teal-600 bg-teal-50 px-2.5 py-1 rounded-full">
-          ${Number(f.score || 0).toFixed(2)} pts
+          ${Number(f.score || 0).toFixed(2)} ${scoreSuffix}
         </span>
       </li>`).join('');
 

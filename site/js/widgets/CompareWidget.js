@@ -3,6 +3,9 @@
 // - Side-by-side multi-dimensional comparison for Institutions & Faculty
 // - Reliable 2-column responsive layout (.cmp-grid-2) that never collapses into a single column on desktop
 // - User-driven selection (no forced auto-selection, no biased featured tags)
+// - Dynamic filtered scoring: selecting CORE A*, A, Journals, or specific research areas dynamically
+//   recomputes institution and faculty scores instead of showing static default scores
+// - Dynamic discipline breakdown: Advantage Matrix & charts recalculate points for the active CORE tier & year range
 // - Full conference taxonomy mapping (/api/conferences/) so faculty publications accurately resolve areas
 // - Automatic enrichment of institution top_faculty with areas, designations, and A* scores
 // - Independent pagination for publications with Prev/Next buttons (strictly no jump-to-page input)
@@ -14,6 +17,8 @@
 import fetchJSON from '../utils/fetchJSON.js';
 import { escapeHTML } from '../utils/sanitize.js';
 import { AREA_TAXONOMY, BROAD_AREAS } from '../utils/areaTaxonomy.js';
+import INSTITUTION_SCORES from '../data/institutionScores.js';
+import FACULTY_SCORES from '../data/facultyScores.js';
 
 const PUBS_PER_PAGE = 8;
 
@@ -259,6 +264,124 @@ export default class CompareWidget {
       }
       return f;
     }));
+  }
+
+  _getActiveFilterSummary() {
+    const parts = [];
+    if (this.rankFilter !== 'all') {
+      parts.push(this.rankFilter === 'Journal' ? 'Journals' : `CORE ${this.rankFilter}`);
+    }
+    if (this.areaFilter !== 'all') {
+      const areaOpt = TAXONOMY_GROUPS.flatMap(g => g.options).find(o => o.value === this.areaFilter);
+      parts.push(areaOpt ? areaOpt.label : this.areaFilter);
+    }
+    if (this.yearFilter !== 'all') {
+      if (this.yearFilter === '5yr') parts.push('2022–2026');
+      else if (this.yearFilter === '3yr') parts.push('2024–2026');
+      else parts.push(this.yearFilter);
+    }
+    return parts.length > 0 ? parts.join(' · ') : 'Overall';
+  }
+
+  // Dynamically compute institution score matching active filters according to methodology
+  _computeInstitutionScore(pubs, defaultScore, instId = null) {
+    const isDefault = (this.areaFilter === 'all' && this.rankFilter === 'all' && this.yearFilter === 'all');
+    if (isDefault) return Number(defaultScore || 0);
+
+    // If rank filter is active and area/year are default, use verified institution score if available
+    if (instId && this.areaFilter === 'all' && this.yearFilter === 'all') {
+      const tierData = INSTITUTION_SCORES[instId];
+      if (tierData) {
+        if (this.rankFilter === 'A*') return tierData.a_star_score;
+        if (this.rankFilter === 'A') return tierData.a_score;
+        if (this.rankFilter === 'Journal') return tierData.journal_score;
+      }
+    }
+
+    if (!pubs || pubs.length === 0) return 0.0;
+
+    const matchingPubs = pubs.filter(p => {
+      const a = this._resolvePublicationArea(p);
+      if (!matchesAreaFilter(a, this.areaFilter)) return false;
+      const rank = p.core_rank || (p.conference && p.conference.core_rank) || '';
+      const conf = p.conference?.acronym || p.conference || p.venue || '';
+      if (!matchesRankFilter(rank, conf, this.rankFilter)) return false;
+      if (!matchesYearFilter(p.year, this.yearFilter)) return false;
+      return true;
+    });
+
+    if (matchingPubs.length === 0) return 0.0;
+
+    // If specific single area code is selected, score is the direct weighted points in that area
+    if (this.areaFilter !== 'all' && !this.areaFilter.endsWith(':all')) {
+      return matchingPubs.reduce((sum, p) => {
+        const rank = p.core_rank || (p.conference && p.conference.core_rank) || '';
+        const weight = rank === 'A*' ? 4.0 : (rank === 'A' ? 2.0 : 1.0);
+        return sum + weight;
+      }, 0);
+    }
+
+    // Otherwise calculate geometric mean of per-area scores across all positive areas
+    const areaScores = {};
+    matchingPubs.forEach(p => {
+      const a = this._resolvePublicationArea(p);
+      const rank = p.core_rank || (p.conference && p.conference.core_rank) || '';
+      const weight = rank === 'A*' ? 4.0 : (rank === 'A' ? 2.0 : 1.0);
+      areaScores[a] = (areaScores[a] || 0) + weight;
+    });
+
+    const values = Object.values(areaScores).filter(v => v > 0);
+    if (values.length === 0) return 0.0;
+    const logSum = values.reduce((acc, v) => acc + Math.log(v), 0);
+    return Math.exp(logSum / values.length);
+  }
+
+  // Dynamically compute discipline breakdown matching active rank & year filters
+  _computeDisciplineBreakdown(pubs, defaultBreakdown) {
+    const isDefault = (this.rankFilter === 'all' && this.yearFilter === 'all');
+    if (isDefault && defaultBreakdown && Object.keys(defaultBreakdown).length > 0) {
+      const mapped = {};
+      Object.entries(defaultBreakdown).forEach(([k, v]) => {
+        let name;
+        if (k === 'other') {
+          name = 'Interdisciplinary & Other Computing';
+        } else if (k === 'CSE') {
+          name = 'Computer Systems Engineering (CSE)';
+        } else {
+          const broad = AREA_TAXONOMY[k] || k;
+          const info = BROAD_AREAS.find(b => b.id === broad);
+          name = info ? info.name : broad;
+        }
+        mapped[name] = (mapped[name] || 0) + Number(v);
+      });
+      return mapped;
+    }
+
+    // Dynamic calculation from matching publications
+    const mapped = {};
+    (pubs || []).forEach(p => {
+      const rank = p.core_rank || (p.conference && p.conference.core_rank) || '';
+      const conf = p.conference?.acronym || p.conference || p.venue || '';
+      if (!matchesRankFilter(rank, conf, this.rankFilter)) return;
+      if (!matchesYearFilter(p.year, this.yearFilter)) return;
+
+      const a = this._resolvePublicationArea(p);
+      let name;
+      if (a === 'other') {
+        name = 'Interdisciplinary & Other Computing';
+      } else if (a === 'CSE') {
+        name = 'Computer Systems Engineering (CSE)';
+      } else {
+        const broad = AREA_TAXONOMY[a] || a;
+        const info = BROAD_AREAS.find(b => b.id === broad);
+        name = info ? info.name : a;
+      }
+
+      const weight = rank === 'A*' ? 4.0 : (rank === 'A' ? 2.0 : 1.0);
+      mapped[name] = (mapped[name] || 0) + weight;
+    });
+
+    return mapped;
   }
 
   _buildAreaOptionsHTML() {
@@ -621,8 +744,12 @@ export default class CompareWidget {
     const i1 = this.inst1;
     const i2 = this.inst2;
 
-    const score1 = Number(i1.score || 0);
-    const score2 = Number(i2.score || 0);
+    const isFiltered = (this.areaFilter !== 'all' || this.rankFilter !== 'all' || this.yearFilter !== 'all');
+    const filterSummary = this._getActiveFilterSummary();
+
+    // Dynamically calculate scores based on active filters (e.g. A*, A, area, year)
+    const score1 = this._computeInstitutionScore(this.inst1Pubs, i1.score, i1.id);
+    const score2 = this._computeInstitutionScore(this.inst2Pubs, i2.score, i2.id);
     const rank1 = i1.rank ? Number(i1.rank) : 999;
     const rank2 = i2.rank ? Number(i2.rank) : 999;
 
@@ -658,9 +785,16 @@ export default class CompareWidget {
     const aCount1 = filteredPubs1.filter(p => (p.core_rank === 'A' || p.conference?.core_rank === 'A')).length;
     const aCount2 = filteredPubs2.filter(p => (p.core_rank === 'A' || p.conference?.core_rank === 'A')).length;
 
-    // Filter faculty matching research area
+    // Filter faculty matching research area & sort appropriately
     const filterFac = (facList) => {
-      let list = (facList || []).filter(f => {
+      let list = (facList || []).map(f => {
+        const enriched = FACULTY_SCORES[f.id];
+        return {
+          ...f,
+          a_star_score: f.a_star_score != null ? f.a_star_score : (enriched?.a_star_score || 0),
+          a_score: f.a_score != null ? f.a_score : (enriched?.a_score || 0),
+        };
+      }).filter(f => {
         if (this.areaFilter !== 'all') {
           if (!f.areas || !Array.isArray(f.areas) || f.areas.length === 0) return false;
           return matchesAreaFilter(f.areas, this.areaFilter);
@@ -668,7 +802,13 @@ export default class CompareWidget {
         return true;
       });
 
-      if (this.sortByFaculty === 'score_desc') {
+      if (this.rankFilter === 'A*') {
+        list = list.filter(f => (f.a_star_score || 0) > 0);
+        list.sort((a, b) => (b.a_star_score || 0) - (a.a_star_score || 0));
+      } else if (this.rankFilter === 'A') {
+        list = list.filter(f => (f.a_score || 0) > 0);
+        list.sort((a, b) => (b.a_score || 0) - (a.a_score || 0));
+      } else if (this.sortByFaculty === 'score_desc') {
         list.sort((a, b) => (b.score || 0) - (a.score || 0));
       } else if (this.sortByFaculty === 'astar_desc') {
         list.sort((a, b) => (b.a_star_score || b.score || 0) - (a.a_star_score || a.score || 0));
@@ -681,30 +821,11 @@ export default class CompareWidget {
     const fac1List = filterFac(i1.top_faculty || []);
     const fac2List = filterFac(i2.top_faculty || []);
 
-    // Disciplines breakdown mapping (clearly handling 'other' and 'CSE')
+    // Disciplines breakdown dynamically calculated for active rank/year filters
     const b1 = i1.area_scores || i1.area_breakdown || {};
     const b2 = i2.area_scores || i2.area_breakdown || {};
-
-    const mapAreas = (breakdown) => {
-      const mapped = {};
-      Object.entries(breakdown).forEach(([k, v]) => {
-        let name;
-        if (k === 'other') {
-          name = 'Interdisciplinary & Other Computing';
-        } else if (k === 'CSE') {
-          name = 'Computer Systems Engineering (CSE)';
-        } else {
-          const broad = AREA_TAXONOMY[k] || k;
-          const info = BROAD_AREAS.find(b => b.id === broad);
-          name = info ? info.name : broad;
-        }
-        mapped[name] = (mapped[name] || 0) + Number(v);
-      });
-      return mapped;
-    };
-
-    const areas1 = mapAreas(b1);
-    const areas2 = mapAreas(b2);
+    const areas1 = this._computeDisciplineBreakdown(this.inst1Pubs, b1);
+    const areas2 = this._computeDisciplineBreakdown(this.inst2Pubs, b2);
     const allDisciplineNames = Array.from(new Set([...Object.keys(areas1), ...Object.keys(areas2)])).sort();
 
     // Table rows with POSITIVE advantage calculation
@@ -778,6 +899,15 @@ export default class CompareWidget {
       return broads.map(b => `<span class="px-1.5 py-0.2 rounded bg-gray-100 text-gray-600 text-3xs font-medium mr-1">${escapeHTML(b)}</span>`).join('');
     };
 
+    const getFacultyScoreText = (f) => {
+      if (this.rankFilter === 'A*') {
+        return `${Number(f.a_star_score || 0).toFixed(2)} A* pts`;
+      } else if (this.rankFilter === 'A') {
+        return `${Number(f.a_score || 0).toFixed(2)} A pts`;
+      }
+      return `${Number(f.score || 0).toFixed(2)} pts`;
+    };
+
     container.innerHTML = `
       <div class="space-y-6">
 
@@ -785,7 +915,7 @@ export default class CompareWidget {
         <div class="cmp-grid-2">
           
           <!-- Inst 1 Card (Teal) -->
-          <div class="card p-6 bg-white rounded-2xl border-2 ${rank1 < rank2 ? 'border-teal-500 shadow-md ring-4 ring-teal-500/10' : 'border-teal-200 shadow-sm'} space-y-4">
+          <div class="card p-6 bg-white rounded-2xl border-2 ${score1 > score2 ? 'border-teal-500 shadow-md ring-4 ring-teal-500/10' : 'border-teal-200 shadow-sm'} space-y-4">
             <div class="flex items-start justify-between">
               <div>
                 <span class="inline-flex items-center px-2 py-0.5 rounded text-2xs font-bold bg-teal-50 text-teal-800 border border-teal-200 uppercase">Institution 1</span>
@@ -794,7 +924,9 @@ export default class CompareWidget {
               </div>
               <div class="text-right">
                 <span class="text-3xl font-black text-teal-600 font-mono block">${score1.toFixed(2)}</span>
-                <span class="text-2xs text-gray-400 font-bold uppercase tracking-wider block">SPARK Score</span>
+                <span class="text-2xs text-gray-400 font-bold uppercase tracking-wider block">
+                  ${isFiltered ? `Score (${escapeHTML(filterSummary)})` : 'SPARK Score'}
+                </span>
                 <span class="inline-block mt-1 text-xs font-bold font-mono px-2.5 py-0.5 rounded-full ${rank1 < rank2 ? 'bg-teal-100 text-teal-800 border border-teal-200' : 'bg-gray-100 text-gray-700'}">National Rank #${i1.rank || '—'}</span>
               </div>
             </div>
@@ -802,7 +934,7 @@ export default class CompareWidget {
           </div>
 
           <!-- Inst 2 Card (Blue) -->
-          <div class="card p-6 bg-white rounded-2xl border-2 ${rank2 < rank1 ? 'border-blue-500 shadow-md ring-4 ring-blue-500/10' : 'border-blue-200 shadow-sm'} space-y-4">
+          <div class="card p-6 bg-white rounded-2xl border-2 ${score2 > score1 ? 'border-blue-500 shadow-md ring-4 ring-blue-500/10' : 'border-blue-200 shadow-sm'} space-y-4">
             <div class="flex items-start justify-between">
               <div>
                 <span class="inline-flex items-center px-2 py-0.5 rounded text-2xs font-bold bg-blue-50 text-blue-800 border border-blue-200 uppercase">Institution 2</span>
@@ -811,7 +943,9 @@ export default class CompareWidget {
               </div>
               <div class="text-right">
                 <span class="text-3xl font-black text-blue-600 font-mono block">${score2.toFixed(2)}</span>
-                <span class="text-2xs text-gray-400 font-bold uppercase tracking-wider block">SPARK Score</span>
+                <span class="text-2xs text-gray-400 font-bold uppercase tracking-wider block">
+                  ${isFiltered ? `Score (${escapeHTML(filterSummary)})` : 'SPARK Score'}
+                </span>
                 <span class="inline-block mt-1 text-xs font-bold font-mono px-2.5 py-0.5 rounded-full ${rank2 < rank1 ? 'bg-blue-100 text-blue-800 border border-blue-200' : 'bg-gray-100 text-gray-700'}">National Rank #${i2.rank || '—'}</span>
               </div>
             </div>
@@ -825,7 +959,7 @@ export default class CompareWidget {
           <div class="flex items-center justify-between border-b border-gray-100 pb-3">
             <div>
               <h3 class="text-sm font-bold text-gray-900">Direct Head-to-Head Comparison</h3>
-              <p class="text-xs text-gray-400">Quantitative metric distribution between both institutions</p>
+              <p class="text-xs text-gray-400">Quantitative metrics dynamically updated for active filters (${escapeHTML(filterSummary)})</p>
             </div>
             <div class="flex items-center gap-3 text-xs font-bold">
               <span class="flex items-center gap-1 text-teal-700"><span class="w-2.5 h-2.5 rounded-full bg-teal-500"></span> ${escapeHTML(i1.name)}</span>
@@ -834,11 +968,13 @@ export default class CompareWidget {
           </div>
           
           <div class="space-y-4">
-            <!-- Metric 1: Overall Score -->
+            <!-- Metric 1: Overall / Filtered Score -->
             <div class="space-y-1">
               <div class="flex items-center justify-between text-xs font-semibold">
                 <span class="text-teal-700 font-mono font-bold">${score1.toFixed(2)} pts</span>
-                <span class="text-gray-500 uppercase text-2xs font-bold">SPARK Overall Score</span>
+                <span class="text-gray-500 uppercase text-2xs font-bold">
+                  ${isFiltered ? `Score (${escapeHTML(filterSummary)})` : 'SPARK Overall Score'}
+                </span>
                 <span class="text-blue-700 font-mono font-bold">${score2.toFixed(2)} pts</span>
               </div>
               <div class="h-3 w-full bg-gray-100 rounded-full overflow-hidden flex">
@@ -847,11 +983,11 @@ export default class CompareWidget {
               </div>
             </div>
 
-            <!-- Metric 2: Total Verified Publications -->
+            <!-- Metric 2: Total Verified Publications Matching Filters -->
             <div class="space-y-1">
               <div class="flex items-center justify-between text-xs font-semibold">
                 <span class="text-teal-700 font-mono font-bold">${filteredPubs1.length} papers</span>
-                <span class="text-gray-500 uppercase text-2xs font-bold">Verified Publications Matching Filters</span>
+                <span class="text-gray-500 uppercase text-2xs font-bold">Verified Publications (${escapeHTML(filterSummary)})</span>
                 <span class="text-blue-700 font-mono font-bold">${filteredPubs2.length} papers</span>
               </div>
               <div class="h-3 w-full bg-gray-100 rounded-full overflow-hidden flex">
@@ -920,7 +1056,7 @@ export default class CompareWidget {
             <div class="flex items-center justify-between">
               <div>
                 <h3 class="text-sm font-bold text-gray-900">Research Discipline Breakdown</h3>
-                <p class="text-xs text-gray-400">Cross-area research points distribution</p>
+                <p class="text-xs text-gray-400">Points distribution matching active filters (${escapeHTML(filterSummary)})</p>
               </div>
               <div class="inline-flex p-1 bg-gray-100 rounded-lg">
                 <button id="cmp-chart-radar-btn" class="px-2.5 py-1 text-xs font-semibold rounded-md transition-all ${this.chartType === 'radar' ? 'bg-white text-teal-700 shadow-sm' : 'text-gray-500 hover:text-gray-900'}">
@@ -943,7 +1079,7 @@ export default class CompareWidget {
           <div class="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center justify-between">
             <div>
               <h3 class="text-sm font-bold text-gray-900">Discipline Advantage Matrix</h3>
-              <p class="text-xs text-gray-400">Head-to-head point totals across verified Australian FoR CS subfields</p>
+              <p class="text-xs text-gray-400">Points distribution across verified CS subfields (${escapeHTML(filterSummary)})</p>
             </div>
             <span class="text-xs text-gray-500 font-mono font-semibold">${allDisciplineNames.length} Subfields</span>
           </div>
@@ -986,9 +1122,8 @@ export default class CompareWidget {
                   </div>
                   <div class="text-right flex-shrink-0">
                     <span class="text-xs font-mono font-bold text-teal-700 bg-teal-50 px-2.5 py-0.5 rounded-full block">
-                      ${Number(f.score || 0).toFixed(2)} pts
+                      ${getFacultyScoreText(f)}
                     </span>
-                    ${f.a_star_score ? `<span class="text-3xs font-mono text-amber-800 font-bold block mt-0.5">${Number(f.a_star_score).toFixed(2)} A* pts</span>` : ''}
                   </div>
                 </li>
               `).join('') || '<li class="py-4 text-xs text-gray-400 text-center">No faculty match selected research area</li>'}
@@ -1014,9 +1149,8 @@ export default class CompareWidget {
                   </div>
                   <div class="text-right flex-shrink-0">
                     <span class="text-xs font-mono font-bold text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded-full block">
-                      ${Number(f.score || 0).toFixed(2)} pts
+                      ${getFacultyScoreText(f)}
                     </span>
-                    ${f.a_star_score ? `<span class="text-3xs font-mono text-amber-800 font-bold block mt-0.5">${Number(f.a_star_score).toFixed(2)} A* pts</span>` : ''}
                   </div>
                 </li>
               `).join('') || '<li class="py-4 text-xs text-gray-400 text-center">No faculty match selected research area</li>'}
@@ -1480,12 +1614,25 @@ export default class CompareWidget {
     const f1 = this.fac1;
     const f2 = this.fac2;
 
-    const s1 = Number(f1.score || 0);
-    const s2 = Number(f2.score || 0);
-    const aStar1 = Number(f1.a_star_score || 0);
-    const aStar2 = Number(f2.a_star_score || 0);
-    const a1 = Number(f1.a_score || 0);
-    const a2 = Number(f2.a_score || 0);
+    const aStar1 = Number(f1.a_star_score != null ? f1.a_star_score : (FACULTY_SCORES[f1.id]?.a_star_score || 0));
+    const aStar2 = Number(f2.a_star_score != null ? f2.a_star_score : (FACULTY_SCORES[f2.id]?.a_star_score || 0));
+    const a1 = Number(f1.a_score != null ? f1.a_score : (FACULTY_SCORES[f1.id]?.a_score || 0));
+    const a2 = Number(f2.a_score != null ? f2.a_score : (FACULTY_SCORES[f2.id]?.a_score || 0));
+
+    // Dynamically adjust displayed score for faculty according to active rank filter
+    let s1 = Number(f1.score || 0);
+    let s2 = Number(f2.score || 0);
+    let scoreLabel = 'Total Points';
+
+    if (this.rankFilter === 'A*') {
+      s1 = aStar1;
+      s2 = aStar2;
+      scoreLabel = 'CORE A* Points';
+    } else if (this.rankFilter === 'A') {
+      s1 = a1;
+      s2 = a2;
+      scoreLabel = 'CORE A Points';
+    }
 
     // Extract publications from authorships with resolved areas and ranks
     const extractPubs = (fac) => {
@@ -1601,7 +1748,7 @@ export default class CompareWidget {
               </div>
               <div class="text-right">
                 <span class="text-3xl font-black text-teal-600 font-mono block">${s1.toFixed(2)}</span>
-                <span class="text-2xs text-gray-400 font-bold uppercase tracking-wider block">Total Points</span>
+                <span class="text-2xs text-gray-400 font-bold uppercase tracking-wider block">${scoreLabel}</span>
                 ${s1 > s2 ? '<span class="inline-block mt-1 text-2xs font-bold px-2.5 py-0.5 rounded-full bg-teal-100 text-teal-800 border border-teal-200">Overall Leader</span>' : ''}
               </div>
             </div>
@@ -1623,7 +1770,7 @@ export default class CompareWidget {
               </div>
               <div class="text-right">
                 <span class="text-3xl font-black text-blue-600 font-mono block">${s2.toFixed(2)}</span>
-                <span class="text-2xs text-gray-400 font-bold uppercase tracking-wider block">Total Points</span>
+                <span class="text-2xs text-gray-400 font-bold uppercase tracking-wider block">${scoreLabel}</span>
                 ${s2 > s1 ? '<span class="inline-block mt-1 text-2xs font-bold px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800 border border-blue-200">Overall Leader</span>' : ''}
               </div>
             </div>
@@ -1651,11 +1798,11 @@ export default class CompareWidget {
           
           <div class="space-y-4">
             
-            <!-- Metric 1: Total Points -->
+            <!-- Metric 1: Selected / Total Points -->
             <div class="space-y-1">
               <div class="flex items-center justify-between text-xs font-semibold">
                 <span class="text-teal-700 font-mono font-bold">${s1.toFixed(2)} pts</span>
-                <span class="text-gray-500 uppercase text-2xs font-bold">Total Weighted Score</span>
+                <span class="text-gray-500 uppercase text-2xs font-bold">${scoreLabel}</span>
                 <span class="text-blue-700 font-mono font-bold">${s2.toFixed(2)} pts</span>
               </div>
               <div class="h-3 w-full bg-gray-100 rounded-full overflow-hidden flex">

@@ -20,9 +20,10 @@ export default class RankingTableWidget {
     }
   }
 
-  setData(newData, searchQuery = '') {
+  setData(newData, searchQuery = '', scoreLabel = 'SPARK Score') {
     this.data = newData || [];
     this.searchQuery = searchQuery;
+    this.scoreLabel = scoreLabel;
     this.sortBy = 'rank';
     this.sortOrder = 'asc';
     this.currentPage = 1;
@@ -33,11 +34,11 @@ export default class RankingTableWidget {
     return [...this.data].sort((a, b) => {
       let valA, valB;
       if (this.sortBy === 'name') {
-        valA = (a.institution?.name || '').toLowerCase();
-        valB = (b.institution?.name || '').toLowerCase();
+        valA = (a.institution?.name || a.institution || '').toLowerCase();
+        valB = (b.institution?.name || b.institution || '').toLowerCase();
       } else {
-        valA = a[this.sortBy] ?? 0;
-        valB = b[this.sortBy] ?? 0;
+        valA = Number(a[this.sortBy] ?? 0);
+        valB = Number(b[this.sortBy] ?? 0);
       }
       if (valA < valB) return this.sortOrder === 'asc' ? -1 : 1;
       if (valA > valB) return this.sortOrder === 'asc' ? 1 : -1;
@@ -145,7 +146,7 @@ export default class RankingTableWidget {
                   class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
                 <div class="inline-flex items-center gap-1">
                   <button class="sort-btn inline-flex items-center hover:text-teal-600 focus:outline-none focus:underline" data-sort="score">
-                    SPARK Score${this._sortIcon('score')}
+                    ${escapeHTML(this.scoreLabel || 'SPARK Score')}${this._sortIcon('score')}
                   </button>
                   <div class="relative spark-tooltip-container inline-flex items-center">
                     <a href="${prefix}pages/methodology.html#computing-scores" 
