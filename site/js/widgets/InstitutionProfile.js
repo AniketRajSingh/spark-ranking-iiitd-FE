@@ -1,7 +1,7 @@
 // widgets/InstitutionProfile.js — SPARK Institution Profile
 // Fetches from API by ?id= param. XSS-safe. No hardcoded IDs.
 // Includes Chart.js visualizations for trends and area distributions,
-// faculty search & pagination, and publications filtering & pagination.
+// faculty search, area & rank filtering, and publications filtering & pagination.
 
 import fetchJSON from '../utils/fetchJSON.js';
 import { escapeHTML } from '../utils/sanitize.js';
@@ -17,6 +17,8 @@ export default class InstitutionProfileWidget {
     // Faculty state
     this.facultyAll = [];
     this.facultySearchQuery = '';
+    this.facultyAreaFilter = 'all';
+    this.facultyRankFilter = 'all';
     this.facultyPage = 1;
     this.facultyPageSize = 10;
 
@@ -116,9 +118,38 @@ export default class InstitutionProfileWidget {
       const areaScores = instData.area_breakdown || instData.area_scores || {};
 
       this.render(instData, trends, areaScores);
+
+      // Asynchronously enrich faculty with per-area and CORE rank scores
+      this._enrichFacultyDetails();
     } catch (e) {
       console.error('[SPARK] Institution fetch failed:', e);
       renderErrorCard(this.container, 'Could not load institution data.', () => this.init());
+    }
+  }
+
+  async _enrichFacultyDetails() {
+    // Only enrich faculty that have scores > 0 to save bandwidth
+    const toEnrich = this.facultyAll.filter(f => Number(f.score || 0) > 0);
+    const batchSize = 10;
+    for (let i = 0; i < toEnrich.length; i += batchSize) {
+      const chunk = toEnrich.slice(i, i + batchSize);
+      await Promise.all(chunk.map(async (fac) => {
+        try {
+          const detail = await fetchJSON(`${this.apiBase}/faculty/${fac.id}/`);
+          if (detail) {
+            fac.areas = detail.areas || [];
+            fac.a_star_score = Number(detail.a_star_score || 0);
+            fac.a_score = Number(detail.a_score || 0);
+            fac.raw_authorships = detail.authorships || [];
+          }
+        } catch (err) {
+          // ignore single faculty detail errors
+        }
+      }));
+    }
+    // Re-render faculty list with enriched data if user has filters active
+    if (this.facultyAreaFilter !== 'all' || this.facultyRankFilter !== 'all') {
+      this._renderFacultyList();
     }
   }
 
@@ -132,18 +163,17 @@ export default class InstitutionProfileWidget {
     const isSubpage = window.location.pathname.includes('/pages/');
     const prefix = isSubpage ? '../' : './';
 
-    // Unique research areas present in publications
-    const availableAreaCodes = new Set();
+    // Group available areas into clean broad categories (No raw 4-digit code duplicates like 4601, 4602)
+    const presentBroadIds = new Set();
     this.pubAll.forEach(p => {
-      if (p.area) availableAreaCodes.add(p.area);
+      const broadId = AREA_TAXONOMY[p.area] || p.area;
+      if (broadId) presentBroadIds.add(broadId);
     });
 
-    const areaOptionsHTML = Array.from(availableAreaCodes).sort().map(code => {
-      const broadId = AREA_TAXONOMY[code] || code;
-      const bInfo = BROAD_AREAS.find(b => b.id === broadId);
-      const label = bInfo ? bInfo.name : code;
-      return `<option value="${escapeHTML(code)}">${escapeHTML(label)} (${escapeHTML(code)})</option>`;
-    }).join('');
+    const broadAreaOptionsHTML = BROAD_AREAS
+      .filter(b => presentBroadIds.has(b.id))
+      .map(b => `<option value="${escapeHTML(b.id)}">${b.icon} ${escapeHTML(b.name)}</option>`)
+      .join('');
 
     this.container.innerHTML = `
       <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -201,26 +231,49 @@ export default class InstitutionProfileWidget {
             </div>
           </div>
 
-          <!-- Faculty of Institution Section -->
+          <!-- Faculty of Institution Section with Filters & Search -->
           <div class="card p-0 overflow-hidden">
-            <div class="p-5 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-white">
-              <div>
-                <h2 class="text-lg font-bold text-gray-800">Faculty Members</h2>
-                <p class="text-xs text-gray-400 mt-0.5">Faculty affiliated with ${name}</p>
+            <div class="p-5 border-b border-gray-100 flex flex-col gap-3 bg-white">
+              <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                <div>
+                  <h2 class="text-lg font-bold text-gray-800">Faculty Members</h2>
+                  <p class="text-xs text-gray-400 mt-0.5">Filter and rank faculty from ${name}</p>
+                </div>
+                <!-- Faculty Search Bar -->
+                <div class="relative w-full sm:w-64">
+                  <input
+                    type="text"
+                    id="inst-faculty-search"
+                    placeholder="Search faculty name..."
+                    value="${escapeHTML(this.facultySearchQuery)}"
+                    class="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                  />
+                  <svg class="w-4 h-4 text-gray-400 absolute left-2.5 top-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                  </svg>
+                </div>
               </div>
-              
-              <!-- Faculty Search Bar -->
-              <div class="relative w-full sm:w-64">
-                <input
-                  type="text"
-                  id="inst-faculty-search"
-                  placeholder="Search faculty by name..."
-                  value="${escapeHTML(this.facultySearchQuery)}"
-                  class="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
-                />
-                <svg class="w-4 h-4 text-gray-400 absolute left-2.5 top-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
-                </svg>
+
+              <!-- Faculty Area & CORE Rank Filter Controls -->
+              <div class="flex flex-wrap items-center gap-2 pt-2 border-t border-gray-50">
+                <span class="text-xs font-semibold text-gray-600">Filter by:</span>
+
+                <!-- Faculty Area Filter -->
+                <select id="inst-faculty-area-filter" class="text-xs py-1.5 px-2.5 rounded-lg border border-gray-200 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-teal-500">
+                  <option value="all">All Research Areas</option>
+                  ${broadAreaOptionsHTML}
+                </select>
+
+                <!-- Faculty CORE Rank Filter -->
+                <select id="inst-faculty-rank-filter" class="text-xs py-1.5 px-2.5 rounded-lg border border-gray-200 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-teal-500">
+                  <option value="all">All CORE Ranks</option>
+                  <option value="A*">CORE A* Only</option>
+                  <option value="A">CORE A Only</option>
+                </select>
+
+                <button id="inst-faculty-clear-btn" class="text-xs text-teal-600 hover:text-teal-800 font-medium ml-auto">
+                  Reset
+                </button>
               </div>
             </div>
 
@@ -254,13 +307,13 @@ export default class InstitutionProfileWidget {
                   </svg>
                 </div>
 
-                <!-- Area filter dropdown -->
+                <!-- Unified Broad Area filter dropdown for publications -->
                 <select id="inst-pub-area-filter" class="text-xs py-1.5 px-2.5 rounded-lg border border-gray-200 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-teal-500">
                   <option value="all">All Areas</option>
-                  ${areaOptionsHTML}
+                  ${broadAreaOptionsHTML}
                 </select>
 
-                <!-- CORE rank filter dropdown -->
+                <!-- CORE rank filter dropdown for publications -->
                 <select id="inst-pub-core-filter" class="text-xs py-1.5 px-2.5 rounded-lg border border-gray-200 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-teal-500">
                   <option value="all">All CORE Ranks</option>
                   <option value="A*">CORE A*</option>
@@ -311,8 +364,8 @@ export default class InstitutionProfileWidget {
     Object.entries(areaScores || {}).forEach(([key, val]) => {
       const broadId = AREA_TAXONOMY[key] || key;
       const areaInfo = BROAD_AREAS.find(b => b.id === broadId);
-      const name = areaInfo ? areaInfo.name : broadId;
-      mappedAreaScores[name] = (mappedAreaScores[name] || 0) + Number(val);
+      const bName = areaInfo ? areaInfo.name : broadId;
+      mappedAreaScores[bName] = (mappedAreaScores[bName] || 0) + Number(val);
     });
 
     this._renderCharts(trends, mappedAreaScores);
@@ -325,6 +378,41 @@ export default class InstitutionProfileWidget {
       facInput.addEventListener('input', (e) => {
         this.facultySearchQuery = e.target.value.trim().toLowerCase();
         this.facultyPage = 1;
+        this._renderFacultyList();
+      });
+    }
+
+    // Faculty Area Filter
+    const facArea = this.container.querySelector('#inst-faculty-area-filter');
+    if (facArea) {
+      facArea.addEventListener('change', (e) => {
+        this.facultyAreaFilter = e.target.value;
+        this.facultyPage = 1;
+        this._renderFacultyList();
+      });
+    }
+
+    // Faculty Rank Filter
+    const facRank = this.container.querySelector('#inst-faculty-rank-filter');
+    if (facRank) {
+      facRank.addEventListener('change', (e) => {
+        this.facultyRankFilter = e.target.value;
+        this.facultyPage = 1;
+        this._renderFacultyList();
+      });
+    }
+
+    // Faculty Reset Button
+    const facReset = this.container.querySelector('#inst-faculty-clear-btn');
+    if (facReset) {
+      facReset.addEventListener('click', () => {
+        this.facultySearchQuery = '';
+        this.facultyAreaFilter = 'all';
+        this.facultyRankFilter = 'all';
+        this.facultyPage = 1;
+        if (facInput) facInput.value = '';
+        if (facArea) facArea.value = 'all';
+        if (facRank) facRank.value = 'all';
         this._renderFacultyList();
       });
     }
@@ -367,9 +455,31 @@ export default class InstitutionProfileWidget {
     const isSubpage = window.location.pathname.includes('/pages/');
     const prefix = isSubpage ? '../' : './';
 
-    let list = this.facultyAll;
+    let list = [...this.facultyAll];
+
+    // Filter by Faculty Name Search
     if (this.facultySearchQuery) {
       list = list.filter(f => (f.name || '').toLowerCase().includes(this.facultySearchQuery));
+    }
+
+    // Filter by Research Area
+    if (this.facultyAreaFilter !== 'all') {
+      const selectedBroadId = this.facultyAreaFilter;
+      list = list.filter(f => {
+        if (!f.areas || f.areas.length === 0) return false;
+        return f.areas.some(aCode => (AREA_TAXONOMY[aCode] || aCode) === selectedBroadId);
+      });
+    }
+
+    // Filter and Sort by CORE Rank
+    if (this.facultyRankFilter === 'A*') {
+      list = list.filter(f => (f.a_star_score != null ? f.a_star_score > 0 : Number(f.score || 0) > 0));
+      list.sort((a, b) => (b.a_star_score ?? b.score ?? 0) - (a.a_star_score ?? a.score ?? 0));
+    } else if (this.facultyRankFilter === 'A') {
+      list = list.filter(f => (f.a_score != null ? f.a_score > 0 : Number(f.score || 0) > 0));
+      list.sort((a, b) => (b.a_score ?? b.score ?? 0) - (a.a_score ?? a.score ?? 0));
+    } else {
+      list.sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
     }
 
     const totalItems = list.length;
@@ -379,7 +489,7 @@ export default class InstitutionProfileWidget {
     if (totalItems === 0) {
       container.innerHTML = `
         <div class="py-10 text-center text-gray-400 text-xs">
-          No faculty found matching "${escapeHTML(this.facultySearchQuery)}"
+          No faculty found matching the selected filters.
         </div>`;
       return;
     }
@@ -389,9 +499,34 @@ export default class InstitutionProfileWidget {
 
     const itemsHTML = pageItems.map((f, idx) => {
       const globalRank = startIdx + idx + 1;
-      const score = Number(f.score || 0).toFixed(2);
+      let displayScore = Number(f.score || 0).toFixed(2);
+      let scoreLabel = 'Total';
+      if (this.facultyRankFilter === 'A*' && f.a_star_score != null) {
+        displayScore = Number(f.a_star_score).toFixed(2);
+        scoreLabel = 'CORE A*';
+      } else if (this.facultyRankFilter === 'A' && f.a_score != null) {
+        displayScore = Number(f.a_score).toFixed(2);
+        scoreLabel = 'CORE A';
+      }
+
+      // Display research area chips for this faculty
+      let areaChips = '';
+      if (f.areas && f.areas.length > 0) {
+        const broadSet = new Set();
+        f.areas.forEach(code => {
+          const bId = AREA_TAXONOMY[code] || code;
+          const bObj = BROAD_AREAS.find(b => b.id === bId);
+          if (bObj) broadSet.add(bObj.name);
+        });
+        areaChips = Array.from(broadSet).slice(0, 3).map(areaName => `
+          <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] bg-teal-50 text-teal-700 border border-teal-100 font-medium">
+            ${escapeHTML(areaName)}
+          </span>
+        `).join(' ');
+      }
+
       return `
-        <li class="flex items-center justify-between py-3 px-5 border-b border-gray-50 last:border-0 hover:bg-gray-50/50 transition-colors">
+        <li class="flex flex-col sm:flex-row sm:items-center sm:justify-between py-3 px-5 border-b border-gray-50 last:border-0 hover:bg-gray-50/50 transition-colors gap-2">
           <div class="flex items-center gap-3">
             <span class="w-6 text-xs text-gray-400 font-mono font-medium">${globalRank}</span>
             <div>
@@ -400,11 +535,15 @@ export default class InstitutionProfileWidget {
                 ${escapeHTML(f.name)}
               </a>
               ${f.designation ? `<p class="text-xs text-gray-400">${escapeHTML(f.designation)}</p>` : ''}
+              ${areaChips ? `<div class="flex flex-wrap gap-1 mt-1">${areaChips}</div>` : ''}
             </div>
           </div>
-          <span class="text-xs font-mono font-semibold text-teal-700 bg-teal-50 px-2.5 py-1 rounded-full border border-teal-100">
-            ${score} pts
-          </span>
+          <div class="flex items-center sm:flex-col sm:items-end gap-1 self-end sm:self-center">
+            <span class="text-xs font-mono font-bold text-teal-800 bg-teal-50 px-2.5 py-1 rounded-full border border-teal-100">
+              ${displayScore} pts
+            </span>
+            <span class="text-[10px] text-gray-400 font-medium">${scoreLabel}</span>
+          </div>
         </li>`;
     }).join('');
 
@@ -435,9 +574,13 @@ export default class InstitutionProfileWidget {
 
     let list = this.pubAll;
 
-    // Filter by area
+    // Filter by Broad Area (matches 4601, 4602, 4611 etc. under AI & ML)
     if (this.pubAreaFilter !== 'all') {
-      list = list.filter(p => p.area === this.pubAreaFilter);
+      const targetBroadId = this.pubAreaFilter;
+      list = list.filter(p => {
+        const broad = AREA_TAXONOMY[p.area] || p.area;
+        return broad === targetBroadId;
+      });
     }
 
     // Filter by CORE rank
@@ -494,7 +637,7 @@ export default class InstitutionProfileWidget {
         }
       }
 
-      // FoR area badge
+      // FoR area name
       const broadId = AREA_TAXONOMY[p.area] || p.area;
       const bInfo = BROAD_AREAS.find(b => b.id === broadId);
       const areaName = bInfo ? bInfo.name : p.area;
@@ -509,7 +652,7 @@ export default class InstitutionProfileWidget {
             <div class="flex items-center gap-2 text-xs text-gray-400 mt-1">
               ${conf ? `<span class="font-medium text-teal-600">${conf}</span> · ` : ''}
               <span>${year}</span>
-              ${areaName ? ` · <span class="bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded text-[10px]">${escapeHTML(areaName)}</span>` : ''}
+              ${areaName ? ` · <span class="bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded text-[10px] font-medium">${escapeHTML(areaName)}</span>` : ''}
             </div>
           </div>
         </li>`;
