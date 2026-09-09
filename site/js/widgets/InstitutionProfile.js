@@ -1,7 +1,11 @@
 // widgets/InstitutionProfile.js — SPARK Institution Profile
-// Fetches from API by ?id= param. XSS-safe. No hardcoded IDs.
-// Includes Chart.js visualizations for trends and area distributions,
-// faculty search, area & rank filtering, and publications filtering & pagination.
+// Features:
+// - Parallel API data fetching with error handling and fallback
+// - Score trends line chart & area breakdown bar chart via Chart.js
+// - Faculty filtering by research interest (combined 'AI & ML (All)' + FoR sub-areas),
+//   conference venue, CORE rank (A*, A), and faculty name search with clean pagination
+// - Publication filtering by research area, conference, CORE rank, and title search with clean pagination
+// - Clean, responsive UI preserving the SPARK design system (.card p-6, uncrowded controls)
 
 import fetchJSON from '../utils/fetchJSON.js';
 import { escapeHTML } from '../utils/sanitize.js';
@@ -9,26 +13,110 @@ import { renderErrorCard } from '../utils/errorCard.js';
 import { AREA_TAXONOMY, BROAD_AREAS } from '../utils/areaTaxonomy.js';
 import { renderPaginationHTML, attachPaginationListeners } from './Pagination.js';
 
+// Hierarchical taxonomy structure for combined & sub-area filtering
+const TAXONOMY_GROUPS = [
+  {
+    group: 'Artificial Intelligence & Machine Learning',
+    options: [
+      { value: 'ai:all', label: 'AI & ML (All)' },
+      { value: '4601', label: 'Applied Computing (4601)' },
+      { value: '4602', label: 'Artificial Intelligence (4602)' },
+      { value: '4611', label: 'Machine Learning (4611)' },
+    ]
+  },
+  {
+    group: 'Computer Vision & Multimedia',
+    options: [
+      { value: 'vision:all', label: 'Computer Vision (4603)' },
+    ]
+  },
+  {
+    group: 'Cybersecurity & Privacy',
+    options: [
+      { value: 'security:all', label: 'Cybersecurity & Privacy (4604)' },
+    ]
+  },
+  {
+    group: 'Data Management & Databases',
+    options: [
+      { value: 'data:all', label: 'Data & Databases (All)' },
+      { value: '4605', label: 'Data Management & Science (4605)' },
+    ]
+  },
+  {
+    group: 'Systems & Distributed Computing',
+    options: [
+      { value: 'systems:all', label: 'Systems & OS (All)' },
+      { value: '4606', label: 'Distributed Systems & OS (4606)' },
+      { value: 'CSE', label: 'Computer Systems (CSE)' },
+    ]
+  },
+  {
+    group: 'Theory & Software Engineering',
+    options: [
+      { value: 'theory:all', label: 'Theory & Languages (All)' },
+      { value: '4612', label: 'Software Engineering (4612)' },
+      { value: '4613', label: 'Theory of Computation (4613)' },
+    ]
+  },
+  {
+    group: 'Human-Centred Computing',
+    options: [
+      { value: 'hci:all', label: 'Human-Centred Computing (4608)' },
+    ]
+  },
+  {
+    group: 'Graphics & Augmented Reality',
+    options: [
+      { value: 'graphics:all', label: 'Graphics, AR & Games (4607)' },
+    ]
+  },
+];
+
+/**
+ * Match a raw area code or array of area codes against the filter value.
+ * Handles both broad combined filters ('ai:all') and specific FoR sub-codes ('4602').
+ */
+function matchesAreaFilter(itemAreaOrAreas, filterValue) {
+  if (!filterValue || filterValue === 'all') return true;
+
+  if (filterValue.endsWith(':all')) {
+    const broadId = filterValue.split(':')[0];
+    if (Array.isArray(itemAreaOrAreas)) {
+      return itemAreaOrAreas.some(a => (AREA_TAXONOMY[a] || a) === broadId);
+    }
+    return (AREA_TAXONOMY[itemAreaOrAreas] || itemAreaOrAreas) === broadId;
+  }
+
+  // Specific FoR subfield code
+  if (Array.isArray(itemAreaOrAreas)) {
+    return itemAreaOrAreas.includes(filterValue);
+  }
+  return itemAreaOrAreas === filterValue;
+}
+
 export default class InstitutionProfileWidget {
   constructor(containerSelector, apiBase) {
     this.container = document.querySelector(containerSelector);
     this.apiBase   = apiBase;
 
-    // Faculty state
+    // Faculty filtering & pagination state
     this.facultyAll = [];
     this.facultySearchQuery = '';
     this.facultyAreaFilter = 'all';
+    this.facultyConfFilter = 'all';
     this.facultyRankFilter = 'all';
     this.facultyPage = 1;
     this.facultyPageSize = 10;
 
-    // Publication state
+    // Publication filtering & pagination state
     this.pubAll = [];
+    this.pubSearchQuery = '';
+    this.pubAreaFilter = 'all';
+    this.pubConfFilter = 'all';
+    this.pubCoreFilter = 'all';
     this.pubPage = 1;
     this.pubPageSize = 15;
-    this.pubAreaFilter = 'all';
-    this.pubCoreFilter = 'all';
-    this.pubSearchQuery = '';
 
     // Chart instances
     this.trendsChartInstance = null;
@@ -44,7 +132,7 @@ export default class InstitutionProfileWidget {
 
     if (!instId) {
       this.container.innerHTML = `
-        <div class="error-card bg-red-50 border border-red-100 rounded-xl p-6 text-center" role="alert">
+        <div class="bg-red-50 border border-red-100 rounded-2xl p-6 text-center" role="alert">
           <p class="text-sm font-medium text-red-700">No institution ID provided in the URL.</p>
         </div>`;
       return;
@@ -59,26 +147,29 @@ export default class InstitutionProfileWidget {
     this.container.innerHTML = `
       <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-pulse">
         <div class="lg:col-span-2 space-y-6">
-          <div class="card p-6 space-y-3">
+          <div class="card p-6 space-y-3 bg-white rounded-2xl border border-gray-100">
             <div class="skeleton h-8 w-2/3 bg-gray-200 rounded"></div>
             <div class="skeleton h-4 w-1/3 bg-gray-200 rounded"></div>
             <div class="skeleton h-4 w-full bg-gray-200 rounded mt-4"></div>
           </div>
-          <div class="card p-6 space-y-4">
+          <div class="card p-6 space-y-4 bg-white rounded-2xl border border-gray-100">
             <div class="skeleton h-6 w-1/4 bg-gray-200 rounded"></div>
             <div class="skeleton h-4 w-full bg-gray-200 rounded"></div>
             <div class="skeleton h-4 w-full bg-gray-200 rounded"></div>
           </div>
         </div>
         <div class="space-y-6">
-          <div class="card p-6 space-y-4">
-            <div class="skeleton h-32 w-full bg-gray-200 rounded"></div>
+          <div class="card p-6 space-y-4 bg-white rounded-2xl border border-gray-100">
+            <div class="skeleton h-48 w-full bg-gray-200 rounded"></div>
+          </div>
+          <div class="card p-6 space-y-4 bg-white rounded-2xl border border-gray-100">
+            <div class="skeleton h-64 w-full bg-gray-200 rounded"></div>
           </div>
         </div>
       </div>`;
 
     try {
-      // Fetch in parallel: institution details, score trends, publications, and all faculty
+      // Fetch in parallel: institution details, score trends, publications, and faculty
       const [instData, trendsData, pubData, facData] = await Promise.all([
         fetchJSON(`${this.apiBase}/institutions/${instId}/`),
         fetchJSON(`${this.apiBase}/institutions/${instId}/trends/`),
@@ -88,7 +179,7 @@ export default class InstitutionProfileWidget {
 
       if (!instData) throw new Error('Empty institution response');
 
-      // Publications
+      // Publications list
       const pubsList = Array.isArray(pubData) ? pubData : (pubData?.results || pubData?.publications || []);
       this.pubAll = pubsList;
 
@@ -101,7 +192,7 @@ export default class InstitutionProfileWidget {
         return (typeof fi === 'object' ? fi.id === numInstId : Number(fi) === numInstId);
       });
 
-      // If backend didn't have full list, fallback to top_faculty from institution object
+      // Fallback to top_faculty from institution object if needed
       if (instFaculty.length === 0 && Array.isArray(instData.top_faculty)) {
         this.facultyAll = instData.top_faculty.map(f => ({
           id: f.id,
@@ -119,7 +210,7 @@ export default class InstitutionProfileWidget {
 
       this.render(instData, trends, areaScores);
 
-      // Asynchronously enrich faculty with per-area and CORE rank scores
+      // Asynchronously fetch detailed faculty profiles (areas, venues, A*/A scores)
       this._enrichFacultyDetails();
     } catch (e) {
       console.error('[SPARK] Institution fetch failed:', e);
@@ -128,9 +219,9 @@ export default class InstitutionProfileWidget {
   }
 
   async _enrichFacultyDetails() {
-    // Only enrich faculty that have scores > 0 to save bandwidth
     const toEnrich = this.facultyAll.filter(f => Number(f.score || 0) > 0);
-    const batchSize = 10;
+    const batchSize = 12;
+
     for (let i = 0; i < toEnrich.length; i += batchSize) {
       const chunk = toEnrich.slice(i, i + batchSize);
       await Promise.all(chunk.map(async (fac) => {
@@ -140,17 +231,58 @@ export default class InstitutionProfileWidget {
             fac.areas = detail.areas || [];
             fac.a_star_score = Number(detail.a_star_score || 0);
             fac.a_score = Number(detail.a_score || 0);
-            fac.raw_authorships = detail.authorships || [];
+
+            // Extract venues & publication counts
+            const venues = new Set();
+            let hasJournal = false;
+            (detail.authorships || []).forEach(a => {
+              const pub = a.publication || {};
+              const v = pub.venue || (typeof pub.conference === 'object' ? pub.conference.acronym : pub.conference);
+              if (v) {
+                venues.add(v);
+                const vl = String(v).toLowerCase();
+                if (vl.includes('journal') || vl.includes('trans') || vl.includes('commu') || vl.includes('letters')) {
+                  hasJournal = true;
+                }
+              }
+              const r = pub.core_rank || (typeof pub.conference === 'object' ? pub.conference.core_rank : '');
+              if (r === 'Journal') hasJournal = true;
+            });
+            fac.venues = Array.from(venues);
+            fac.pub_count = (detail.authorships || []).length;
+            fac.has_journal = hasJournal;
           }
         } catch (err) {
-          // ignore single faculty detail errors
+          // ignore single detail failure
         }
       }));
     }
-    // Re-render faculty list with enriched data if user has filters active
-    if (this.facultyAreaFilter !== 'all' || this.facultyRankFilter !== 'all') {
-      this._renderFacultyList();
-    }
+
+    // Refresh faculty list if filters are active
+    this._renderFacultyList();
+  }
+
+  _buildAreaOptionsHTML() {
+    // Generate optgroups with combined 'AI & ML (All)' + specific subfields
+    return TAXONOMY_GROUPS.map(g => {
+      const opts = g.options.map(opt =>
+        `<option value="${escapeHTML(opt.value)}">${escapeHTML(opt.label)}</option>`
+      ).join('');
+      return `<optgroup label="${escapeHTML(g.group)}">${opts}</optgroup>`;
+    }).join('');
+  }
+
+  _buildConferenceOptionsHTML() {
+    const confSet = new Set();
+    this.pubAll.forEach(p => {
+      const acronym = p.conference?.acronym || p.conference || p.venue;
+      if (acronym && typeof acronym === 'string' && acronym.trim()) {
+        confSet.add(acronym.trim());
+      }
+    });
+    return Array.from(confSet).sort().map(c =>
+      `<option value="${escapeHTML(c)}">${escapeHTML(c)}</option>`
+    ).join('');
   }
 
   render(data, trends, areaScores) {
@@ -163,26 +295,17 @@ export default class InstitutionProfileWidget {
     const isSubpage = window.location.pathname.includes('/pages/');
     const prefix = isSubpage ? '../' : './';
 
-    // Group available areas into clean broad categories (No raw 4-digit code duplicates like 4601, 4602)
-    const presentBroadIds = new Set();
-    this.pubAll.forEach(p => {
-      const broadId = AREA_TAXONOMY[p.area] || p.area;
-      if (broadId) presentBroadIds.add(broadId);
-    });
-
-    const broadAreaOptionsHTML = BROAD_AREAS
-      .filter(b => presentBroadIds.has(b.id))
-      .map(b => `<option value="${escapeHTML(b.id)}">${b.icon} ${escapeHTML(b.name)}</option>`)
-      .join('');
+    const areaOptionsHTML = this._buildAreaOptionsHTML();
+    const confOptionsHTML = this._buildConferenceOptionsHTML();
 
     this.container.innerHTML = `
       <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-        <!-- Left Column (Main Profile & Content) -->
+        <!-- Left Column (Main Profile, Faculty & Publications) -->
         <div class="lg:col-span-2 space-y-6">
 
-          <!-- Profile Header -->
-          <div class="card p-6">
+          <!-- Profile Header Card -->
+          <div class="card p-6 bg-white rounded-2xl border border-gray-100 shadow-sm">
             <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
               <div class="flex-1">
                 <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 leading-tight">${name}</h1>
@@ -198,16 +321,16 @@ export default class InstitutionProfileWidget {
                 <p class="mt-4 text-sm sm:text-base text-gray-600 leading-relaxed">${summary}</p>
               </div>
               
-              <!-- Stats -->
+              <!-- Key Stat Medals -->
               ${rank || score ? `
                 <div class="flex gap-4 sm:flex-col sm:items-end flex-shrink-0">
                   ${rank ? `
-                    <div class="stat-card w-36 text-center bg-teal-50/50 border border-teal-100 rounded-xl p-3">
+                    <div class="stat-card w-36 text-center bg-teal-50/60 border border-teal-100 rounded-xl p-3">
                       <span class="text-xs text-gray-400 font-semibold block uppercase tracking-wider">National Rank</span>
                       <span class="text-2xl font-black text-teal-600 block mt-0.5">#${rank}</span>
                     </div>` : ''}
                   ${score ? `
-                    <div class="stat-card w-36 text-center bg-teal-50/50 border border-teal-100 rounded-xl p-3 relative spark-tooltip-container">
+                    <div class="stat-card w-36 text-center bg-teal-50/60 border border-teal-100 rounded-xl p-3 relative spark-tooltip-container">
                       <span class="text-xs text-gray-400 font-semibold block uppercase tracking-wider">
                         SPARK Score
                         <a href="${prefix}pages/methodology.html#computing-scores" class="inline-flex items-center text-teal-500 hover:text-teal-700 ml-0.5" title="View Scoring Methodology">
@@ -218,122 +341,148 @@ export default class InstitutionProfileWidget {
                       </span>
                       <span class="text-2xl font-black text-teal-600 block mt-0.5">${score}</span>
 
-                      <!-- Hover Popup -->
+                      <!-- Hover Tooltip Popup -->
                       <div class="spark-tooltip-box absolute right-0 top-full mt-2 w-72 p-3 bg-white text-gray-700 text-xs rounded-xl shadow-xl border border-teal-200 z-50 text-left">
                         <span class="font-bold text-teal-900 block border-b pb-1 mb-1">Geometric Mean Score</span>
                         <div class="bg-teal-50 p-1.5 rounded font-mono text-center font-bold text-teal-950 my-1">
                           Score = &prod; (S<sub>a</sub>)<sup>1 / |A<sub>pos</sub>|</sup>
                         </div>
-                        <p class="text-[11px] text-gray-600">Rewards balanced research across distinct positive areas.</p>
+                        <p class="text-[11px] text-gray-600">Rewards balanced research across positive subfields.</p>
                       </div>
                     </div>` : ''}
                 </div>` : ''}
             </div>
           </div>
 
-          <!-- Faculty of Institution Section with Filters & Search -->
-          <div class="card p-0 overflow-hidden">
-            <div class="p-5 border-b border-gray-100 flex flex-col gap-3 bg-white">
-              <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                <div>
-                  <h2 class="text-lg font-bold text-gray-800">Faculty Members</h2>
-                  <p class="text-xs text-gray-400 mt-0.5">Filter and rank faculty from ${name}</p>
-                </div>
-                <!-- Faculty Search Bar -->
-                <div class="relative w-full sm:w-64">
-                  <input
-                    type="text"
-                    id="inst-faculty-search"
-                    placeholder="Search faculty name..."
-                    value="${escapeHTML(this.facultySearchQuery)}"
-                    class="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
-                  />
-                  <svg class="w-4 h-4 text-gray-400 absolute left-2.5 top-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
-                  </svg>
-                </div>
+          <!-- Faculty Members Section (Clean Card with Spacious Controls) -->
+          <div class="card p-6 bg-white rounded-2xl border border-gray-100 shadow-sm space-y-4">
+            <!-- Header -->
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-gray-100 pb-3">
+              <div>
+                <h2 class="text-lg font-bold text-gray-800">Faculty Members</h2>
+                <p class="text-xs text-gray-500 mt-0.5">Faculty affiliated with ${name}</p>
+              </div>
+              <span id="inst-faculty-count" class="text-xs font-medium text-teal-700 bg-teal-50 px-2.5 py-1 rounded-full border border-teal-100 self-start sm:self-auto">
+                ${this.facultyAll.length} Faculty
+              </span>
+            </div>
+
+            <!-- Filter Controls Grid -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+              <!-- Search Faculty -->
+              <div class="relative">
+                <input
+                  type="text"
+                  id="inst-faculty-search"
+                  placeholder="Search faculty name..."
+                  value="${escapeHTML(this.facultySearchQuery)}"
+                  class="w-full pl-8 pr-3 py-2 text-xs rounded-lg border border-gray-200 bg-white text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 shadow-sm transition-all"
+                />
+                <svg class="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                </svg>
               </div>
 
-              <!-- Faculty Area & CORE Rank Filter Controls -->
-              <div class="flex flex-wrap items-center gap-2 pt-2 border-t border-gray-50">
-                <span class="text-xs font-semibold text-gray-600">Filter by:</span>
+              <!-- Research Area Filter -->
+              <select id="inst-faculty-area-filter" class="w-full px-2.5 py-2 text-xs rounded-lg border border-gray-200 bg-white text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 shadow-sm transition-all cursor-pointer">
+                <option value="all">All Research Areas</option>
+                ${areaOptionsHTML}
+              </select>
 
-                <!-- Faculty Area Filter -->
-                <select id="inst-faculty-area-filter" class="text-xs py-1.5 px-2.5 rounded-lg border border-gray-200 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-teal-500">
-                  <option value="all">All Research Areas</option>
-                  ${broadAreaOptionsHTML}
-                </select>
+              <!-- Conference Filter -->
+              <select id="inst-faculty-conf-filter" class="w-full px-2.5 py-2 text-xs rounded-lg border border-gray-200 bg-white text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 shadow-sm transition-all cursor-pointer">
+                <option value="all">All Conferences</option>
+                ${confOptionsHTML}
+              </select>
 
-                <!-- Faculty CORE Rank Filter -->
-                <select id="inst-faculty-rank-filter" class="text-xs py-1.5 px-2.5 rounded-lg border border-gray-200 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-teal-500">
+              <!-- CORE Rank & Reset -->
+              <div class="flex items-center gap-2">
+                <select id="inst-faculty-rank-filter" class="flex-1 px-2.5 py-2 text-xs rounded-lg border border-gray-200 bg-white text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 shadow-sm transition-all cursor-pointer">
                   <option value="all">All CORE Ranks</option>
                   <option value="A*">CORE A* Only</option>
                   <option value="A">CORE A Only</option>
+                  <option value="Journal">With Journals</option>
                 </select>
-
-                <button id="inst-faculty-clear-btn" class="text-xs text-teal-600 hover:text-teal-800 font-medium ml-auto">
+                <button id="inst-faculty-clear-btn" class="px-2.5 py-2 text-xs font-medium text-gray-600 hover:text-teal-700 hover:bg-teal-50 rounded-lg border border-gray-200 transition-colors" title="Reset Filters">
                   Reset
                 </button>
               </div>
             </div>
 
-            <!-- Faculty List -->
-            <div id="inst-faculty-container">
+            <!-- Faculty Listing Container -->
+            <div id="inst-faculty-container" class="pt-1">
               <!-- Rendered via _renderFacultyList() -->
             </div>
           </div>
 
-          <!-- Publications Listing Section -->
-          <div class="card p-0 overflow-hidden">
-            <div class="p-5 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-white">
+          <!-- Publications Section (Clean Card with Spacious Controls) -->
+          <div class="card p-6 bg-white rounded-2xl border border-gray-100 shadow-sm space-y-4">
+            <!-- Header -->
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-gray-100 pb-3">
               <div>
                 <h2 class="text-lg font-bold text-gray-800">Publications</h2>
-                <p class="text-xs text-gray-400 mt-0.5">Peer-reviewed conference & journal publications</p>
+                <p class="text-xs text-gray-500 mt-0.5">Peer-reviewed conference & journal publications</p>
+              </div>
+              <span id="inst-pub-count" class="text-xs font-medium text-teal-700 bg-teal-50 px-2.5 py-1 rounded-full border border-teal-100 self-start sm:self-auto">
+                ${this.pubAll.length} Publications
+              </span>
+            </div>
+
+            <!-- Filter Controls Grid -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+              <!-- Title Search -->
+              <div class="relative">
+                <input
+                  type="text"
+                  id="inst-pub-search"
+                  placeholder="Search titles..."
+                  value="${escapeHTML(this.pubSearchQuery)}"
+                  class="w-full pl-8 pr-3 py-2 text-xs rounded-lg border border-gray-200 bg-white text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 shadow-sm transition-all"
+                />
+                <svg class="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                </svg>
               </div>
 
-              <!-- Filter & Search Controls for Publications -->
-              <div class="flex flex-wrap items-center gap-2">
-                <!-- Search pub title -->
-                <div class="relative">
-                  <input
-                    type="text"
-                    id="inst-pub-search"
-                    placeholder="Search titles..."
-                    value="${escapeHTML(this.pubSearchQuery)}"
-                    class="pl-7 pr-3 py-1.5 text-xs rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-teal-500"
-                  />
-                  <svg class="w-3.5 h-3.5 text-gray-400 absolute left-2 top-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
-                  </svg>
-                </div>
+              <!-- Research Area Filter -->
+              <select id="inst-pub-area-filter" class="w-full px-2.5 py-2 text-xs rounded-lg border border-gray-200 bg-white text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 shadow-sm transition-all cursor-pointer">
+                <option value="all">All Research Areas</option>
+                ${areaOptionsHTML}
+              </select>
 
-                <!-- Unified Broad Area filter dropdown for publications -->
-                <select id="inst-pub-area-filter" class="text-xs py-1.5 px-2.5 rounded-lg border border-gray-200 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-teal-500">
-                  <option value="all">All Areas</option>
-                  ${broadAreaOptionsHTML}
-                </select>
+              <!-- Conference Filter -->
+              <select id="inst-pub-conf-filter" class="w-full px-2.5 py-2 text-xs rounded-lg border border-gray-200 bg-white text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 shadow-sm transition-all cursor-pointer">
+                <option value="all">All Conferences</option>
+                ${confOptionsHTML}
+              </select>
 
-                <!-- CORE rank filter dropdown for publications -->
-                <select id="inst-pub-core-filter" class="text-xs py-1.5 px-2.5 rounded-lg border border-gray-200 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-teal-500">
+              <!-- CORE Rank & Reset -->
+              <div class="flex items-center gap-2">
+                <select id="inst-pub-core-filter" class="flex-1 px-2.5 py-2 text-xs rounded-lg border border-gray-200 bg-white text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 shadow-sm transition-all cursor-pointer">
                   <option value="all">All CORE Ranks</option>
-                  <option value="A*">CORE A*</option>
-                  <option value="A">CORE A</option>
+                  <option value="A*">CORE A* Only</option>
+                  <option value="A">CORE A Only</option>
+                  <option value="Journal">Journals & Trans.</option>
                 </select>
+                <button id="inst-pub-clear-btn" class="px-2.5 py-2 text-xs font-medium text-gray-600 hover:text-teal-700 hover:bg-teal-50 rounded-lg border border-gray-200 transition-colors" title="Reset Filters">
+                  Reset
+                </button>
               </div>
             </div>
 
-            <div id="inst-pubs-container">
+            <!-- Publications Listing Container -->
+            <div id="inst-pubs-container" class="pt-1">
               <!-- Rendered via _renderPublications() -->
             </div>
           </div>
 
         </div>
 
-        <!-- Right Column (Charts & Stats) -->
+        <!-- Right Column (Charts & Visualizations) -->
         <div class="space-y-6">
 
-          <!-- Trends Chart -->
-          <div class="card p-6">
+          <!-- Trends Chart Card -->
+          <div class="card p-6 bg-white rounded-2xl border border-gray-100 shadow-sm">
             <h2 class="text-base font-bold text-gray-800 mb-1">Score Trends</h2>
             <p class="text-xs text-gray-400 mb-4">Historical weighted publication score over time</p>
             <div class="relative w-full" style="min-height: 220px; height: 220px;">
@@ -341,8 +490,8 @@ export default class InstitutionProfileWidget {
             </div>
           </div>
 
-          <!-- Research Area Distribution Chart -->
-          <div class="card p-6">
+          <!-- Research Area Distribution Chart Card -->
+          <div class="card p-6 bg-white rounded-2xl border border-gray-100 shadow-sm">
             <h2 class="text-base font-bold text-gray-800 mb-1">Area Breakdown</h2>
             <p class="text-xs text-gray-400 mb-4">Weighted points across CS sub-disciplines</p>
             <div class="relative w-full" style="min-height: 280px; height: 280px;">
@@ -372,7 +521,7 @@ export default class InstitutionProfileWidget {
   }
 
   _attachFilterListeners() {
-    // Faculty search
+    // ── Faculty Listeners ─────────────────────────────
     const facInput = this.container.querySelector('#inst-faculty-search');
     if (facInput) {
       facInput.addEventListener('input', (e) => {
@@ -382,7 +531,6 @@ export default class InstitutionProfileWidget {
       });
     }
 
-    // Faculty Area Filter
     const facArea = this.container.querySelector('#inst-faculty-area-filter');
     if (facArea) {
       facArea.addEventListener('change', (e) => {
@@ -392,7 +540,15 @@ export default class InstitutionProfileWidget {
       });
     }
 
-    // Faculty Rank Filter
+    const facConf = this.container.querySelector('#inst-faculty-conf-filter');
+    if (facConf) {
+      facConf.addEventListener('change', (e) => {
+        this.facultyConfFilter = e.target.value;
+        this.facultyPage = 1;
+        this._renderFacultyList();
+      });
+    }
+
     const facRank = this.container.querySelector('#inst-faculty-rank-filter');
     if (facRank) {
       facRank.addEventListener('change', (e) => {
@@ -402,22 +558,23 @@ export default class InstitutionProfileWidget {
       });
     }
 
-    // Faculty Reset Button
     const facReset = this.container.querySelector('#inst-faculty-clear-btn');
     if (facReset) {
       facReset.addEventListener('click', () => {
         this.facultySearchQuery = '';
         this.facultyAreaFilter = 'all';
+        this.facultyConfFilter = 'all';
         this.facultyRankFilter = 'all';
         this.facultyPage = 1;
         if (facInput) facInput.value = '';
         if (facArea) facArea.value = 'all';
+        if (facConf) facConf.value = 'all';
         if (facRank) facRank.value = 'all';
         this._renderFacultyList();
       });
     }
 
-    // Pub search
+    // ── Publications Listeners ─────────────────────────
     const pubSearch = this.container.querySelector('#inst-pub-search');
     if (pubSearch) {
       pubSearch.addEventListener('input', (e) => {
@@ -427,7 +584,6 @@ export default class InstitutionProfileWidget {
       });
     }
 
-    // Pub area
     const pubArea = this.container.querySelector('#inst-pub-area-filter');
     if (pubArea) {
       pubArea.addEventListener('change', (e) => {
@@ -437,12 +593,36 @@ export default class InstitutionProfileWidget {
       });
     }
 
-    // Pub core rank
+    const pubConf = this.container.querySelector('#inst-pub-conf-filter');
+    if (pubConf) {
+      pubConf.addEventListener('change', (e) => {
+        this.pubConfFilter = e.target.value;
+        this.pubPage = 1;
+        this._renderPublications();
+      });
+    }
+
     const pubCore = this.container.querySelector('#inst-pub-core-filter');
     if (pubCore) {
       pubCore.addEventListener('change', (e) => {
         this.pubCoreFilter = e.target.value;
         this.pubPage = 1;
+        this._renderPublications();
+      });
+    }
+
+    const pubReset = this.container.querySelector('#inst-pub-clear-btn');
+    if (pubReset) {
+      pubReset.addEventListener('click', () => {
+        this.pubSearchQuery = '';
+        this.pubAreaFilter = 'all';
+        this.pubConfFilter = 'all';
+        this.pubCoreFilter = 'all';
+        this.pubPage = 1;
+        if (pubSearch) pubSearch.value = '';
+        if (pubArea) pubArea.value = 'all';
+        if (pubConf) pubConf.value = 'all';
+        if (pubCore) pubCore.value = 'all';
         this._renderPublications();
       });
     }
@@ -457,30 +637,44 @@ export default class InstitutionProfileWidget {
 
     let list = [...this.facultyAll];
 
-    // Filter by Faculty Name Search
+    // Filter by Search Query
     if (this.facultySearchQuery) {
       list = list.filter(f => (f.name || '').toLowerCase().includes(this.facultySearchQuery));
     }
 
-    // Filter by Research Area
+    // Filter by Research Area / Interest
     if (this.facultyAreaFilter !== 'all') {
-      const selectedBroadId = this.facultyAreaFilter;
       list = list.filter(f => {
         if (!f.areas || f.areas.length === 0) return false;
-        return f.areas.some(aCode => (AREA_TAXONOMY[aCode] || aCode) === selectedBroadId);
+        return matchesAreaFilter(f.areas, this.facultyAreaFilter);
       });
     }
 
-    // Filter and Sort by CORE Rank
+    // Filter by Conference Venue
+    if (this.facultyConfFilter !== 'all') {
+      list = list.filter(f => {
+        if (!f.venues || f.venues.length === 0) return false;
+        return f.venues.includes(this.facultyConfFilter);
+      });
+    }
+
+    // Filter and Sort by CORE Rank / Venue type
     if (this.facultyRankFilter === 'A*') {
       list = list.filter(f => (f.a_star_score != null ? f.a_star_score > 0 : Number(f.score || 0) > 0));
       list.sort((a, b) => (b.a_star_score ?? b.score ?? 0) - (a.a_star_score ?? a.score ?? 0));
     } else if (this.facultyRankFilter === 'A') {
       list = list.filter(f => (f.a_score != null ? f.a_score > 0 : Number(f.score || 0) > 0));
       list.sort((a, b) => (b.a_score ?? b.score ?? 0) - (a.a_score ?? a.score ?? 0));
+    } else if (this.facultyRankFilter === 'Journal') {
+      list = list.filter(f => f.has_journal);
+      list.sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
     } else {
       list.sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
     }
+
+    // Update count badge
+    const countBadge = this.container.querySelector('#inst-faculty-count');
+    if (countBadge) countBadge.textContent = `${list.length} Faculty`;
 
     const totalItems = list.length;
     const totalPages = Math.ceil(totalItems / this.facultyPageSize);
@@ -488,8 +682,8 @@ export default class InstitutionProfileWidget {
 
     if (totalItems === 0) {
       container.innerHTML = `
-        <div class="py-10 text-center text-gray-400 text-xs">
-          No faculty found matching the selected filters.
+        <div class="py-12 text-center text-gray-400 text-sm">
+          No faculty members match the selected filters.
         </div>`;
       return;
     }
@@ -500,16 +694,18 @@ export default class InstitutionProfileWidget {
     const itemsHTML = pageItems.map((f, idx) => {
       const globalRank = startIdx + idx + 1;
       let displayScore = Number(f.score || 0).toFixed(2);
-      let scoreLabel = 'Total';
+      let scoreLabel = 'Total Score';
       if (this.facultyRankFilter === 'A*' && f.a_star_score != null) {
         displayScore = Number(f.a_star_score).toFixed(2);
         scoreLabel = 'CORE A*';
       } else if (this.facultyRankFilter === 'A' && f.a_score != null) {
         displayScore = Number(f.a_score).toFixed(2);
         scoreLabel = 'CORE A';
+      } else if (this.facultyRankFilter === 'Journal') {
+        scoreLabel = 'Journals';
       }
 
-      // Display research area chips for this faculty
+      // Display research area chips
       let areaChips = '';
       if (f.areas && f.areas.length > 0) {
         const broadSet = new Set();
@@ -519,30 +715,30 @@ export default class InstitutionProfileWidget {
           if (bObj) broadSet.add(bObj.name);
         });
         areaChips = Array.from(broadSet).slice(0, 3).map(areaName => `
-          <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] bg-teal-50 text-teal-700 border border-teal-100 font-medium">
+          <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] bg-teal-50 text-teal-700 border border-teal-100 font-medium">
             ${escapeHTML(areaName)}
           </span>
         `).join(' ');
       }
 
       return `
-        <li class="flex flex-col sm:flex-row sm:items-center sm:justify-between py-3 px-5 border-b border-gray-50 last:border-0 hover:bg-gray-50/50 transition-colors gap-2">
-          <div class="flex items-center gap-3">
-            <span class="w-6 text-xs text-gray-400 font-mono font-medium">${globalRank}</span>
-            <div>
+        <li class="flex items-center justify-between py-3.5 border-b border-gray-100 last:border-0 hover:bg-teal-50/20 px-2 rounded-xl transition-colors">
+          <div class="flex items-center gap-3.5 min-w-0">
+            <span class="w-6 text-xs text-gray-400 font-mono font-semibold flex-shrink-0 text-center">${globalRank}</span>
+            <div class="min-w-0">
               <a href="${prefix}pages/faculty-profile.html?id=${escapeHTML(f.id)}"
-                 class="text-sm font-semibold text-gray-800 hover:text-teal-600 hover:underline transition-colors">
+                 class="text-sm font-semibold text-gray-900 hover:text-teal-600 transition-colors block truncate">
                 ${escapeHTML(f.name)}
               </a>
-              ${f.designation ? `<p class="text-xs text-gray-400">${escapeHTML(f.designation)}</p>` : ''}
-              ${areaChips ? `<div class="flex flex-wrap gap-1 mt-1">${areaChips}</div>` : ''}
+              <div class="flex items-center gap-2 text-xs text-gray-500 mt-1 flex-wrap">
+                ${f.designation ? `<span>${escapeHTML(f.designation)}</span>` : ''}
+                ${areaChips}
+              </div>
             </div>
           </div>
-          <div class="flex items-center sm:flex-col sm:items-end gap-1 self-end sm:self-center">
-            <span class="text-xs font-mono font-bold text-teal-800 bg-teal-50 px-2.5 py-1 rounded-full border border-teal-100">
-              ${displayScore} pts
-            </span>
-            <span class="text-[10px] text-gray-400 font-medium">${scoreLabel}</span>
+          <div class="flex flex-col items-end flex-shrink-0 ml-4">
+            <span class="text-sm font-mono font-bold text-teal-800">${displayScore} pts</span>
+            <span class="text-[10px] text-gray-400 font-medium uppercase tracking-wider">${scoreLabel}</span>
           </div>
         </li>`;
     }).join('');
@@ -556,7 +752,7 @@ export default class InstitutionProfileWidget {
     });
 
     container.innerHTML = `
-      <ul class="divide-y divide-gray-50">
+      <ul class="divide-y divide-gray-100 mb-2">
         ${itemsHTML}
       </ul>
       ${paginationHTML}
@@ -574,27 +770,41 @@ export default class InstitutionProfileWidget {
 
     let list = this.pubAll;
 
-    // Filter by Broad Area (matches 4601, 4602, 4611 etc. under AI & ML)
+    // Filter by Research Area (Combined or Subfield)
     if (this.pubAreaFilter !== 'all') {
-      const targetBroadId = this.pubAreaFilter;
+      list = list.filter(p => matchesAreaFilter(p.area, this.pubAreaFilter));
+    }
+
+    // Filter by Conference Venue
+    if (this.pubConfFilter !== 'all') {
       list = list.filter(p => {
-        const broad = AREA_TAXONOMY[p.area] || p.area;
-        return broad === targetBroadId;
+        const acronym = p.conference?.acronym || p.conference || p.venue;
+        return acronym === this.pubConfFilter;
       });
     }
 
-    // Filter by CORE rank
+    // Filter by CORE Rank / Journals
     if (this.pubCoreFilter !== 'all') {
       list = list.filter(p => {
         const rank = p.core_rank || (p.conference && p.conference.core_rank);
+        if (this.pubCoreFilter === 'Journal') {
+          if (rank === 'Journal') return true;
+          const conf = (p.conference?.acronym || p.conference || p.venue || '').toLowerCase();
+          const fullName = (p.conference?.full_name || '').toLowerCase();
+          return conf.includes('journal') || conf.includes('trans') || conf.includes('commu') || conf.includes('letters') || fullName.includes('journal') || fullName.includes('transaction');
+        }
         return rank === this.pubCoreFilter;
       });
     }
 
-    // Filter by Search query
+    // Filter by Search Query
     if (this.pubSearchQuery) {
       list = list.filter(p => (p.title || '').toLowerCase().includes(this.pubSearchQuery));
     }
+
+    // Update count badge
+    const countBadge = this.container.querySelector('#inst-pub-count');
+    if (countBadge) countBadge.textContent = `${list.length} Publications`;
 
     const totalItems = list.length;
     const totalPages = Math.ceil(totalItems / this.pubPageSize);
@@ -602,8 +812,8 @@ export default class InstitutionProfileWidget {
 
     if (totalItems === 0) {
       container.innerHTML = `
-        <div class="py-12 text-center text-gray-400 text-xs">
-          No publications match the current filters.
+        <div class="py-12 text-center text-gray-400 text-sm">
+          No publications match the selected filters.
         </div>`;
       return;
     }
@@ -637,19 +847,19 @@ export default class InstitutionProfileWidget {
         }
       }
 
-      // FoR area name
+      // FoR Area label
       const broadId = AREA_TAXONOMY[p.area] || p.area;
       const bInfo = BROAD_AREAS.find(b => b.id === broadId);
       const areaName = bInfo ? bInfo.name : p.area;
 
       return `
-        <li class="py-3 px-5 border-b border-gray-50 last:border-0 flex items-start gap-3 hover:bg-gray-50/50 transition-colors">
+        <li class="py-3.5 border-b border-gray-100 last:border-0 flex items-start gap-3 hover:bg-gray-50/50 px-2 rounded-xl transition-colors">
           <div class="flex flex-col items-center gap-1 flex-shrink-0 pt-0.5">
             ${coreBadge}
           </div>
           <div class="min-w-0 flex-1">
-            <h4 class="text-sm font-semibold text-gray-800 leading-snug">${title}</h4>
-            <div class="flex items-center gap-2 text-xs text-gray-400 mt-1">
+            <h4 class="text-sm font-semibold text-gray-900 leading-snug">${title}</h4>
+            <div class="flex items-center gap-2 text-xs text-gray-500 mt-1 flex-wrap">
               ${conf ? `<span class="font-medium text-teal-600">${conf}</span> · ` : ''}
               <span>${year}</span>
               ${areaName ? ` · <span class="bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded text-[10px] font-medium">${escapeHTML(areaName)}</span>` : ''}
@@ -667,7 +877,7 @@ export default class InstitutionProfileWidget {
     });
 
     container.innerHTML = `
-      <ul class="divide-y divide-gray-50">
+      <ul class="divide-y divide-gray-100 mb-2">
         ${pubsHTML}
       </ul>
       ${paginationHTML}
@@ -695,7 +905,7 @@ export default class InstitutionProfileWidget {
       this.areasChartInstance = null;
     }
 
-    // 1. Trends Line Chart
+    // 1. Score Trends Chart
     const trendsCanvas = this.container.querySelector('#trends-chart');
     if (trendsCanvas && trends.length > 0) {
       const sortedTrends = [...trends].sort((a, b) => a.year - b.year);
@@ -740,10 +950,9 @@ export default class InstitutionProfileWidget {
       });
     }
 
-    // 2. Area Bar Chart
+    // 2. Area Breakdown Chart
     const areasCanvas = this.container.querySelector('#areas-chart');
     if (areasCanvas && areaScores && Object.keys(areaScores).length > 0) {
-      // Sort areas by score descending
       const sortedEntries = Object.entries(areaScores).sort((a, b) => b[1] - a[1]);
       const labels = sortedEntries.map(e => e[0]);
       const data = sortedEntries.map(e => Number(e[1].toFixed(2)));

@@ -147,17 +147,18 @@ export default class FilterWidget {
               <span class="text-sm font-bold text-gray-800">Filter Venues</span>
             `}
 
-            <!-- CORE Rank Filter -->
+            <!-- CORE Rank / Venue Filter -->
             <div class="flex items-center gap-2 pl-2 sm:border-l sm:border-gray-200">
               <label for="filter-rank-select" class="text-sm font-semibold text-gray-700 whitespace-nowrap">CORE Rank:</label>
               <select
                 id="filter-rank-select"
                 class="px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm bg-white text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 transition-all cursor-pointer"
-                aria-label="Filter by CORE rank"
+                aria-label="Filter by CORE rank or venue type"
               >
                 <option value="all" ${this.state.rank === 'all' ? 'selected' : ''}>All Ranks</option>
                 <option value="A*" ${this.state.rank === 'A*' ? 'selected' : ''}>CORE A*</option>
                 <option value="A" ${this.state.rank === 'A' ? 'selected' : ''}>CORE A</option>
+                <option value="Journal" ${this.state.rank === 'Journal' ? 'selected' : ''}>Journals</option>
               </select>
             </div>
           </div>
