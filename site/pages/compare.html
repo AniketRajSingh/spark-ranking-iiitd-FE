@@ -3,16 +3,116 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>SPARK — Compare Institutions</title>
-  <meta name="description" content="Compare CS research metrics, scores, publication volumes, and top faculty of Indian institutions side-by-side." />
+  <title>SPARK — Compare Institutions & Faculty</title>
+  <meta name="description" content="Side-by-side comparative analysis of Indian CS departments and faculty members. Compare multi-year trajectories, research strengths, and verified publications." />
   <link rel="icon" href="../logo.png" type="image/png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="../css/tailwind.css" />
+  <!-- Chart.js CDN in head so it is ready before ES modules -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     body { font-family: 'Inter', ui-sans-serif, system-ui, sans-serif; }
     .hero-gradient { background: linear-gradient(135deg, #f0fdfa 0%, #e0f2fe 50%, #f0fdf4 100%); }
+
+    /* Reliable 2-column side-by-side layout across desktop/laptop */
+    .cmp-grid-2 {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 24px;
+      width: 100%;
+    }
+    @media (max-width: 768px) {
+      .cmp-grid-2 {
+        grid-template-columns: 1fr;
+        gap: 16px;
+      }
+    }
+
+    /* Reliable filter bar row */
+    .cmp-filter-bar {
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    @media (max-width: 640px) {
+      .cmp-filter-bar {
+        flex-direction: column;
+        align-items: stretch;
+      }
+    }
+
+    /* Small font utilities missing in pre-compiled tailwind */
+    .text-2xs { font-size: 10px; line-height: 14px; }
+    .text-3xs { font-size: 9px; line-height: 12px; }
+    .text-xs-plus { font-size: 11px; line-height: 15px; }
+
+    /* Tab switcher */
+    .cmp-tab-active {
+      background-color: #ffffff !important;
+      color: #0f766e !important;
+      box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+    }
+    .cmp-tab-inactive {
+      background-color: transparent !important;
+      color: #64748b !important;
+    }
+    .cmp-tab-inactive:hover {
+      color: #0f766e !important;
+    }
+
+    /* Custom Badges */
+    .badge-a-star {
+      background-color: #fef3c7;
+      color: #92400e;
+      border: 1px solid #fde68a;
+    }
+    .badge-a {
+      background-color: #e0f2fe;
+      color: #0369a1;
+      border: 1px solid #bae6fd;
+    }
+    .badge-journal {
+      background-color: #f3e8ff;
+      color: #6b21a8;
+      border: 1px solid #e9d5ff;
+    }
+
+    /* Head-to-Head meters */
+    .meter-fill-inst1 {
+      background: linear-gradient(90deg, #0d9488, #14b8a6);
+      transition: width 0.4s ease-in-out;
+    }
+    .meter-fill-inst2 {
+      background: linear-gradient(90deg, #2563eb, #3b82f6);
+      transition: width 0.4s ease-in-out;
+    }
+
+    /* Quick Preset Chips */
+    .preset-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 4px 10px;
+      border-radius: 9999px;
+      font-size: 11px;
+      font-weight: 600;
+      background-color: #f1f5f9;
+      color: #475569;
+      border: 1px solid #e2e8f0;
+      cursor: pointer;
+      transition: all 0.15s ease-in-out;
+      white-space: nowrap;
+    }
+    .preset-chip:hover {
+      background-color: #e0f2fe;
+      color: #0369a1;
+      border-color: #7dd3fc;
+      transform: translateY(-1px);
+    }
   </style>
 </head>
 <body class="bg-gray-50 text-gray-900 antialiased">
@@ -20,13 +120,21 @@
   <div id="navbar-placeholder"></div>
 
   <!-- Header -->
-  <section class="hero-gradient border-b border-gray-100 py-10">
+  <section class="hero-gradient border-b border-gray-100 py-8 sm:py-10">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex items-center gap-2 mb-2">
+        <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-teal-100 text-teal-800 border border-teal-200">
+          <svg class="w-3.5 h-3.5 text-teal-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+          </svg>
+          Head-to-Head Analytics
+        </span>
+      </div>
       <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 tracking-tight">
-        Compare Institutions
+        Comparative Intelligence Hub
       </h1>
-      <p class="mt-2 text-sm sm:text-base text-gray-600 max-w-xl">
-        Select two Indian computer science departments to compare their research metrics, publications, and faculty performance side-by-side.
+      <p class="mt-2 text-sm sm:text-base text-gray-600 max-w-2xl">
+        Perform deep side-by-side evaluations of Indian CS departments and faculty members. Compare multi-year research trajectories, discipline specializations, publication outputs, and faculty leadership.
       </p>
     </div>
   </section>
@@ -51,9 +159,6 @@
       </div>
     </div>
   </footer>
-
-  <!-- Chart.js CDN -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" integrity="sha384-j/C37bgdY0I6EP2bS2t0lsm68v3mN2sI2B5Nf1o6yE0r01y7yP9v/Ew" crossorigin="anonymous"></script>
 
   <!-- Scripts -->
   <script src="../js/navbar.js"></script>
