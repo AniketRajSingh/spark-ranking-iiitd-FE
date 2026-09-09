@@ -367,10 +367,10 @@ export default class InstitutionProfileWidget {
               </span>
             </div>
 
-            <!-- Filter Controls Grid -->
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+            <!-- Filter Controls: Single unified line across desktop and laptop -->
+            <div class="inst-filters-row">
               <!-- Search Faculty -->
-              <div class="relative">
+              <div class="inst-filter-item inst-filter-search relative">
                 <input
                   type="text"
                   id="inst-faculty-search"
@@ -384,26 +384,30 @@ export default class InstitutionProfileWidget {
               </div>
 
               <!-- Research Area Filter -->
-              <select id="inst-faculty-area-filter" class="w-full px-2.5 py-2 text-xs rounded-lg border border-gray-200 bg-white text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 shadow-sm transition-all cursor-pointer">
-                <option value="all">All Research Areas</option>
-                ${areaOptionsHTML}
-              </select>
+              <div class="inst-filter-item">
+                <select id="inst-faculty-area-filter" class="w-full px-2.5 py-2 text-xs rounded-lg border border-gray-200 bg-white text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 shadow-sm transition-all cursor-pointer truncate">
+                  <option value="all">All Research Areas</option>
+                  ${areaOptionsHTML}
+                </select>
+              </div>
 
               <!-- Conference Filter -->
-              <select id="inst-faculty-conf-filter" class="w-full px-2.5 py-2 text-xs rounded-lg border border-gray-200 bg-white text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 shadow-sm transition-all cursor-pointer">
-                <option value="all">All Conferences</option>
-                ${confOptionsHTML}
-              </select>
+              <div class="inst-filter-item">
+                <select id="inst-faculty-conf-filter" class="w-full px-2.5 py-2 text-xs rounded-lg border border-gray-200 bg-white text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 shadow-sm transition-all cursor-pointer truncate">
+                  <option value="all">All Conferences</option>
+                  ${confOptionsHTML}
+                </select>
+              </div>
 
               <!-- CORE Rank & Reset -->
-              <div class="flex items-center gap-2">
-                <select id="inst-faculty-rank-filter" class="flex-1 px-2.5 py-2 text-xs rounded-lg border border-gray-200 bg-white text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 shadow-sm transition-all cursor-pointer">
+              <div class="inst-filter-item inst-filter-rank flex items-center gap-1.5">
+                <select id="inst-faculty-rank-filter" class="flex-1 min-w-0 px-2.5 py-2 text-xs rounded-lg border border-gray-200 bg-white text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 shadow-sm transition-all cursor-pointer truncate">
                   <option value="all">All CORE Ranks</option>
                   <option value="A*">CORE A* Only</option>
                   <option value="A">CORE A Only</option>
                   <option value="Journal">With Journals</option>
                 </select>
-                <button id="inst-faculty-clear-btn" class="px-2.5 py-2 text-xs font-medium text-gray-600 hover:text-teal-700 hover:bg-teal-50 rounded-lg border border-gray-200 transition-colors" title="Reset Filters">
+                <button id="inst-faculty-clear-btn" class="px-2.5 py-2 text-xs font-medium text-gray-600 hover:text-teal-700 hover:bg-teal-50 rounded-lg border border-gray-200 transition-colors flex-shrink-0" title="Reset Filters">
                   Reset
                 </button>
               </div>
@@ -428,10 +432,10 @@ export default class InstitutionProfileWidget {
               </span>
             </div>
 
-            <!-- Filter Controls Grid -->
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+            <!-- Filter Controls: Single unified line across desktop and laptop -->
+            <div class="inst-filters-row">
               <!-- Title Search -->
-              <div class="relative">
+              <div class="inst-filter-item inst-filter-search relative">
                 <input
                   type="text"
                   id="inst-pub-search"
@@ -445,26 +449,30 @@ export default class InstitutionProfileWidget {
               </div>
 
               <!-- Research Area Filter -->
-              <select id="inst-pub-area-filter" class="w-full px-2.5 py-2 text-xs rounded-lg border border-gray-200 bg-white text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 shadow-sm transition-all cursor-pointer">
-                <option value="all">All Research Areas</option>
-                ${areaOptionsHTML}
-              </select>
+              <div class="inst-filter-item">
+                <select id="inst-pub-area-filter" class="w-full px-2.5 py-2 text-xs rounded-lg border border-gray-200 bg-white text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 shadow-sm transition-all cursor-pointer truncate">
+                  <option value="all">All Research Areas</option>
+                  ${areaOptionsHTML}
+                </select>
+              </div>
 
               <!-- Conference Filter -->
-              <select id="inst-pub-conf-filter" class="w-full px-2.5 py-2 text-xs rounded-lg border border-gray-200 bg-white text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 shadow-sm transition-all cursor-pointer">
-                <option value="all">All Conferences</option>
-                ${confOptionsHTML}
-              </select>
+              <div class="inst-filter-item">
+                <select id="inst-pub-conf-filter" class="w-full px-2.5 py-2 text-xs rounded-lg border border-gray-200 bg-white text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 shadow-sm transition-all cursor-pointer truncate">
+                  <option value="all">All Conferences</option>
+                  ${confOptionsHTML}
+                </select>
+              </div>
 
               <!-- CORE Rank & Reset -->
-              <div class="flex items-center gap-2">
-                <select id="inst-pub-core-filter" class="flex-1 px-2.5 py-2 text-xs rounded-lg border border-gray-200 bg-white text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 shadow-sm transition-all cursor-pointer">
+              <div class="inst-filter-item inst-filter-rank flex items-center gap-1.5">
+                <select id="inst-pub-core-filter" class="flex-1 min-w-0 px-2.5 py-2 text-xs rounded-lg border border-gray-200 bg-white text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 shadow-sm transition-all cursor-pointer truncate">
                   <option value="all">All CORE Ranks</option>
                   <option value="A*">CORE A* Only</option>
                   <option value="A">CORE A Only</option>
                   <option value="Journal">Journals & Trans.</option>
                 </select>
-                <button id="inst-pub-clear-btn" class="px-2.5 py-2 text-xs font-medium text-gray-600 hover:text-teal-700 hover:bg-teal-50 rounded-lg border border-gray-200 transition-colors" title="Reset Filters">
+                <button id="inst-pub-clear-btn" class="px-2.5 py-2 text-xs font-medium text-gray-600 hover:text-teal-700 hover:bg-teal-50 rounded-lg border border-gray-200 transition-colors flex-shrink-0" title="Reset Filters">
                   Reset
                 </button>
               </div>
@@ -738,7 +746,7 @@ export default class InstitutionProfileWidget {
           </div>
           <div class="flex flex-col items-end flex-shrink-0 ml-4">
             <span class="text-sm font-mono font-bold text-teal-800">${displayScore} pts</span>
-            <span class="text-[10px] text-gray-400 font-medium uppercase tracking-wider">${scoreLabel}</span>
+            <span class="inst-score-sublabel" style="font-size: 8.5px; line-height: 1.1; color: #9ca3af; letter-spacing: 0.05em; text-transform: uppercase; font-weight: 500;">${scoreLabel}</span>
           </div>
         </li>`;
     }).join('');
