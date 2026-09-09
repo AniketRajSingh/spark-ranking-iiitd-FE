@@ -3,6 +3,7 @@ import { escapeHTML } from '../utils/sanitize.js';
 import { clearBusy, renderSkeleton } from '../utils/errorCard.js';
 import fetchJSON from '../utils/fetchJSON.js';
 import { AREA_TAXONOMY, BROAD_AREAS } from '../utils/areaTaxonomy.js';
+import { renderPaginationHTML, attachPaginationListeners } from './Pagination.js';
 
 export default class ConferenceListWidget {
   constructor(containerId) {
@@ -13,6 +14,8 @@ export default class ConferenceListWidget {
     this.rankFilter = 'all';
     this.sortBy = 'acronym';
     this.sortOrder = 'asc';
+    this.pageSize = 25;
+    this.page = 1;
     this._pubsPromise = null;
 
     if (!this.container) {
@@ -24,21 +27,28 @@ export default class ConferenceListWidget {
 
   setData(newData) {
     this.data = newData || [];
+    this.page = 1;
     this.render();
   }
 
   setFilters(newFilters) {
     this.filters = newFilters;
+    if (newFilters && newFilters.rank !== undefined) {
+      this.rankFilter = newFilters.rank;
+    }
+    this.page = 1;
     this.render();
   }
 
   setSearch(q) {
     this.searchQuery = q || '';
+    this.page = 1;
     this.render();
   }
 
   setRankFilter(rank) {
     this.rankFilter = rank || 'all';
+    this.page = 1;
     this.render();
   }
 
@@ -108,7 +118,15 @@ export default class ConferenceListWidget {
       return;
     }
 
-    const rows = sorted.map(c => {
+    const totalPages = Math.ceil(sorted.length / this.pageSize);
+    if (this.page > totalPages) this.page = totalPages;
+    if (this.page < 1) this.page = 1;
+
+    const startIdx = (this.page - 1) * this.pageSize;
+    const endIdx = startIdx + this.pageSize;
+    const pageItems = sorted.slice(startIdx, endIdx);
+
+    const rows = pageItems.map(c => {
       const id = escapeHTML(c.id || '');
       const acronym = escapeHTML(c.acronym || '');
       const name = escapeHTML(c.name || c.full_name || '');
@@ -143,41 +161,58 @@ export default class ConferenceListWidget {
         </tr>`;
     }).join('');
 
+    const paginationHTML = renderPaginationHTML({
+      currentPage: this.page,
+      totalPages: totalPages,
+      totalItems: sorted.length,
+      pageSize: this.pageSize,
+      idPrefix: 'conf-pagination',
+    });
+
     this.container.innerHTML = `
-      <div class="overflow-x-auto rounded-xl border border-gray-100">
-        <table class="min-w-full divide-y divide-gray-100">
-          <thead class="bg-gray-50">
-            <tr>
-              <th scope="col" class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                <button class="sort-btn inline-flex items-center hover:text-teal-600 focus:outline-none" data-sort="acronym">
-                  Acronym${this._sortIcon('acronym')}
-                </button>
-              </th>
-              <th scope="col" class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                <button class="sort-btn inline-flex items-center hover:text-teal-600 focus:outline-none" data-sort="name">
-                  Venue Name${this._sortIcon('name')}
-                </button>
-              </th>
-              <th scope="col" class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                <button class="sort-btn inline-flex items-center hover:text-teal-600 focus:outline-none" data-sort="core_rank">
-                  CORE Rank${this._sortIcon('core_rank')}
-                </button>
-              </th>
-              <th scope="col" class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                <button class="sort-btn inline-flex items-center hover:text-teal-600 focus:outline-none" data-sort="area">
-                  Taxonomy Area${this._sortIcon('area')}
-                </button>
-              </th>
-            </tr>
-          </thead>
-          <tbody class="bg-white divide-y divide-gray-100">
-            ${rows}
-          </tbody>
-        </table>
+      <div class="rounded-xl border border-gray-100 bg-white">
+        <div class="overflow-x-auto">
+          <table class="min-w-full divide-y divide-gray-100">
+            <thead class="bg-gray-50">
+              <tr>
+                <th scope="col" class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                  <button class="sort-btn inline-flex items-center hover:text-teal-600 focus:outline-none" data-sort="acronym">
+                    Acronym${this._sortIcon('acronym')}
+                  </button>
+                </th>
+                <th scope="col" class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                  <button class="sort-btn inline-flex items-center hover:text-teal-600 focus:outline-none" data-sort="name">
+                    Venue Name${this._sortIcon('name')}
+                  </button>
+                </th>
+                <th scope="col" class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                  <button class="sort-btn inline-flex items-center hover:text-teal-600 focus:outline-none" data-sort="core_rank">
+                    CORE Rank${this._sortIcon('core_rank')}
+                  </button>
+                </th>
+                <th scope="col" class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                  <button class="sort-btn inline-flex items-center hover:text-teal-600 focus:outline-none" data-sort="area">
+                    Taxonomy Area${this._sortIcon('area')}
+                  </button>
+                </th>
+              </tr>
+            </thead>
+            <tbody class="bg-white divide-y divide-gray-100">
+              ${rows}
+            </tbody>
+          </table>
+        </div>
+        ${paginationHTML}
       </div>`;
 
     clearBusy(this.container);
     this._attachListeners();
+
+    attachPaginationListeners(this.container, (newPage) => {
+      this.page = newPage;
+      this.render();
+      this.container.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 'conf-pagination');
   }
 
   _attachListeners() {

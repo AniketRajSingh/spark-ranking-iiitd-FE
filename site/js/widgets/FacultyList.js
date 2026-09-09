@@ -3,6 +3,7 @@
 
 import { escapeHTML } from '../utils/sanitize.js';
 import { clearBusy } from '../utils/errorCard.js';
+import { renderPaginationHTML, attachPaginationListeners } from './Pagination.js';
 
 export default class FacultyListWidget {
   constructor(containerId, filters, serverTopData = null, searchQuery = '') {
@@ -86,8 +87,13 @@ export default class FacultyListWidget {
 
     flat.sort((a, b) => (b.score || 0) - (a.score || 0));
 
-    const pageItems = flat.slice(0, this.pageSize * this.page);
-    const hasMore   = pageItems.length < flat.length;
+    const totalPages = Math.ceil(flat.length / this.pageSize);
+    if (this.page > totalPages) this.page = totalPages;
+    if (this.page < 1) this.page = 1;
+
+    const startIdx = (this.page - 1) * this.pageSize;
+    const endIdx = startIdx + this.pageSize;
+    const pageItems = flat.slice(startIdx, endIdx);
 
     const isSubpage = window.location.pathname.includes('/pages/');
     const prefix = isSubpage ? '../' : './';
@@ -95,7 +101,7 @@ export default class FacultyListWidget {
     const rows = pageItems.map((f, idx) => `
       <li class="flex items-start gap-3 py-3 border-b border-gray-100 last:border-0 hover:bg-gray-50/50 px-2 rounded-lg transition-colors duration-150">
         <span class="flex-shrink-0 w-6 h-6 flex items-center justify-center text-xs font-semibold text-gray-400 mt-0.5">
-          ${idx + 1}
+          ${startIdx + idx + 1}
         </span>
         <div class="flex-1 min-w-0">
           <a href="${prefix}pages/faculty-profile.html?id=${escapeHTML(f.id)}"
@@ -112,28 +118,28 @@ export default class FacultyListWidget {
         </span>
       </li>`).join('');
 
+    const paginationHTML = renderPaginationHTML({
+      currentPage: this.page,
+      totalPages: totalPages,
+      totalItems: flat.length,
+      pageSize: this.pageSize,
+      idPrefix: 'faculty-pagination',
+    });
+
     container.innerHTML = `
       <div>
         <ul class="divide-y divide-gray-100 px-1">
           ${rows}
         </ul>
-        ${hasMore ? `
-          <div class="p-4 text-center">
-            <button id="show-more-faculty"
-              class="px-4 py-2 border border-teal-200 text-teal-600 rounded-lg text-sm font-medium hover:bg-teal-50 transition-colors">
-              Show more (${flat.length - pageItems.length} remaining)
-            </button>
-          </div>` : ''}
+        ${paginationHTML}
       </div>`;
 
     clearBusy(container);
 
-    const btn = container.querySelector('#show-more-faculty');
-    if (btn) {
-      btn.addEventListener('click', () => {
-        this.page += 1;
-        this.render();
-      });
-    }
+    attachPaginationListeners(container, (newPage) => {
+      this.page = newPage;
+      this.render();
+      container.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 'faculty-pagination');
   }
 }

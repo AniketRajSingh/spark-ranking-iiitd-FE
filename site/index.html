@@ -21,6 +21,20 @@
     .search-clear { display: none; }
     .search-wrapper:focus-within .search-clear,
     .search-wrapper.has-value .search-clear { display: flex; }
+    .spark-tooltip-box {
+      display: none;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.2s ease, transform 0.2s ease;
+      transform: translateY(-4px);
+    }
+    .spark-tooltip-container:hover .spark-tooltip-box,
+    .spark-tooltip-container:focus-within .spark-tooltip-box {
+      display: block !important;
+      pointer-events: auto !important;
+      opacity: 1 !important;
+      transform: translateY(0);
+    }
   </style>
 </head>
 <body class="bg-gray-50 text-gray-900 antialiased">
@@ -75,7 +89,7 @@
       <div id="search-bar-container"></div>
 
       <!-- Rankings section -->
-      <div class="card p-0 overflow-hidden">
+      <div class="card p-0">
         <div class="flex items-center justify-between px-5 py-4 border-b border-gray-100">
           <h2 class="text-base font-semibold text-gray-800">National Rankings</h2>
           <span id="results-count" class="text-xs text-gray-400"></span>

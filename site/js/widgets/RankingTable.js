@@ -4,6 +4,7 @@
 
 import { escapeHTML } from '../utils/sanitize.js';
 import { clearBusy } from '../utils/errorCard.js';
+import { renderPaginationHTML, attachPaginationListeners } from './Pagination.js';
 
 export default class RankingTableWidget {
   constructor(containerId) {
@@ -11,6 +12,8 @@ export default class RankingTableWidget {
     this.sortBy = 'rank';
     this.sortOrder = 'asc';
     this.data = [];
+    this.currentPage = 1;
+    this.pageSize = 20;
 
     if (!this.container) {
       console.error(`[SPARK] RankingTableWidget: #${containerId} not found`);
@@ -22,6 +25,7 @@ export default class RankingTableWidget {
     this.searchQuery = searchQuery;
     this.sortBy = 'rank';
     this.sortOrder = 'asc';
+    this.currentPage = 1;
     this.render();
   }
 
@@ -84,7 +88,15 @@ export default class RankingTableWidget {
       return;
     }
 
-    const rows = this._sorted().map(r => {
+    const sortedAll = this._sorted();
+    const totalItems = sortedAll.length;
+    const totalPages = Math.ceil(totalItems / this.pageSize);
+    if (this.currentPage > totalPages && totalPages > 0) this.currentPage = totalPages;
+
+    const startIdx = (this.currentPage - 1) * this.pageSize;
+    const pageItems = sortedAll.slice(startIdx, startIdx + this.pageSize);
+
+    const rows = pageItems.map(r => {
       const instName = escapeHTML(r.institution?.name || r.institution || '');
       const instId   = escapeHTML(r.institution?.id   || '');
       const score    = escapeHTML(r.score);
@@ -103,6 +115,14 @@ export default class RankingTableWidget {
           <td class="px-4 py-3.5 text-sm text-gray-600 font-mono font-medium">${score}</td>
         </tr>`;
     }).join('');
+
+    const paginationHTML = renderPaginationHTML({
+      currentPage: this.currentPage,
+      totalPages: totalPages,
+      totalItems: totalItems,
+      pageSize: this.pageSize,
+      idPrefix: 'ranking-table'
+    });
 
     this.container.innerHTML = `
       <div class="overflow-x-auto rounded-xl border border-gray-100">
@@ -127,11 +147,29 @@ export default class RankingTableWidget {
                   <button class="sort-btn inline-flex items-center hover:text-teal-600 focus:outline-none focus:underline" data-sort="score">
                     SPARK Score${this._sortIcon('score')}
                   </button>
-                  <a href="${prefix}pages/methodology.html#computing-scores" class="text-teal-500 hover:text-teal-700 inline-flex items-center" title="Scores are calculated as the geometric mean across positive research areas. Click to read methodology.">
-                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z"/>
-                    </svg>
-                  </a>
+                  <div class="relative spark-tooltip-container inline-flex items-center">
+                    <a href="${prefix}pages/methodology.html#computing-scores" 
+                       class="text-teal-500 hover:text-teal-700 inline-flex items-center focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-1 rounded-full p-0.5"
+                       title="Click to read full methodology">
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z"/>
+                      </svg>
+                    </a>
+
+                    <!-- Hover Popup / Tooltip with explicit hover styling -->
+                    <div class="spark-tooltip-box absolute right-0 top-full mt-2 w-80 p-3.5 bg-white text-gray-700 text-xs rounded-xl shadow-2xl border border-teal-200 z-50 normal-case tracking-normal">
+                      <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-gray-100">
+                        <span class="font-bold text-teal-900 text-xs tracking-wide">SPARK Scoring Formula</span>
+                        <a href="${prefix}pages/methodology.html#computing-scores" class="text-[11px] text-teal-600 hover:underline font-semibold">Methodology &rarr;</a>
+                      </div>
+                      <div class="bg-teal-50/90 border border-teal-100 rounded-lg py-2 px-2.5 text-center font-mono text-sm text-teal-950 font-bold my-2 shadow-inner">
+                        Score = &prod;<sub>a &in; A<sub>pos</sub></sub> (S<sub>a</sub>)<sup>1 / |A<sub>pos</sub>|</sup>
+                      </div>
+                      <p class="text-[11px] leading-relaxed text-gray-600 mt-1">
+                        Calculated as the <strong class="text-gray-800 font-semibold">Geometric Mean</strong> across all research areas where the institution has positive publication contributions (<span class="font-mono text-teal-700 font-medium">S<sub>a</sub> &gt; 0</span>), rewarding balanced research excellence across subfields.
+                      </p>
+                    </div>
+                  </div>
                 </div>
               </th>
             </tr>
@@ -140,6 +178,7 @@ export default class RankingTableWidget {
             ${rows}
           </tbody>
         </table>
+        ${paginationHTML}
       </div>`;
 
     clearBusy(this.container);
@@ -147,6 +186,12 @@ export default class RankingTableWidget {
   }
 
   _attachListeners() {
+    attachPaginationListeners(this.container, (newPage) => {
+      this.currentPage = newPage;
+      this.render();
+      this.container.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 'ranking-table');
+
     this.container.querySelectorAll('.sort-btn').forEach(btn => {
       btn.addEventListener('click', e => {
         e.preventDefault();

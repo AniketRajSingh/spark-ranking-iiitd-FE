@@ -30,6 +30,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const params = new URLSearchParams();
     if (filters.startYear) params.set('start_year', String(filters.startYear));
     if (filters.endYear)   params.set('end_year',   String(filters.endYear));
+    if (filters.rank && filters.rank !== 'all') params.set('rank', filters.rank);
     if (filters.areas && filters.areas.size > 0) {
       const subCodes = expandToSubCodes(filters.areas, groupedAreas);
       if (subCodes.length > 0) params.set('area', subCodes.join(','));
@@ -104,6 +105,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const currentYear = new Date().getFullYear();
       const isDefault = activeFilters.startYear === 2015 &&
                         activeFilters.endYear === currentYear &&
+                        (!activeFilters.rank || activeFilters.rank === 'all') &&
                         (!activeFilters.areas || activeFilters.areas.size === 0);
 
       let finalData = normalised;

@@ -10,9 +10,25 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="../css/tailwind.css" />
+  <!-- Chart.js CDN in head so it is loaded before any module scripts run -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     body { font-family: 'Inter', ui-sans-serif, system-ui, sans-serif; }
     .hero-gradient { background: linear-gradient(135deg, #f0fdfa 0%, #e0f2fe 50%, #f0fdf4 100%); }
+    .spark-tooltip-box {
+      display: none;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.2s ease, transform 0.2s ease;
+      transform: translateY(-4px);
+    }
+    .spark-tooltip-container:hover .spark-tooltip-box,
+    .spark-tooltip-container:focus-within .spark-tooltip-box {
+      display: block !important;
+      pointer-events: auto !important;
+      opacity: 1 !important;
+      transform: translateY(0);
+    }
   </style>
 </head>
 <body class="bg-gray-50 text-gray-900 antialiased">
@@ -37,9 +53,6 @@
       </div>
     </div>
   </footer>
-
-  <!-- Chart.js CDN -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
   <!-- Scripts -->
   <script src="../js/navbar.js"></script>

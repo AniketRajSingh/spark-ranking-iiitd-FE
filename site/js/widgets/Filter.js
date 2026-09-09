@@ -32,16 +32,62 @@ export default class FilterWidget {
       document.head.appendChild(style);
     }
 
+    this.storageKey = this.config.storageKey || 'spark_shared_filter';
+
+    // Restore from sessionStorage if exists
+    const savedState = this._loadFromSession();
+
     this.state = {
-      areas: new Set(),
-      startYear: this.config.startYear || 2015,
-      endYear: this.config.endYear || new Date().getFullYear(),
-      isCollapsed: this.config.isCollapsed !== undefined ? this.config.isCollapsed : this.showYearRange,
+      areas: savedState ? new Set(savedState.areas) : new Set(),
+      startYear: savedState && savedState.startYear !== undefined ? savedState.startYear : (this.config.startYear || 2015),
+      endYear: savedState && savedState.endYear !== undefined ? savedState.endYear : (this.config.endYear || new Date().getFullYear()),
+      rank: savedState && savedState.rank ? savedState.rank : 'all',
+      isCollapsed: savedState && savedState.isCollapsed !== undefined ? savedState.isCollapsed : (this.config.isCollapsed !== undefined ? this.config.isCollapsed : this.showYearRange),
     };
     this._debounceTimer = null;
 
     this.render();
     this._attachListeners();
+  }
+
+  _loadFromSession() {
+    try {
+      const raw = sessionStorage.getItem(this.storageKey);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      return {
+        areas: Array.isArray(parsed.areas) ? parsed.areas : [],
+        startYear: parsed.startYear,
+        endYear: parsed.endYear,
+        rank: parsed.rank || 'all',
+        isCollapsed: parsed.isCollapsed,
+      };
+    } catch (e) {
+      return null;
+    }
+  }
+
+  _saveToSession() {
+    try {
+      const data = {
+        areas: Array.from(this.state.areas),
+        startYear: this.state.startYear,
+        endYear: this.state.endYear,
+        rank: this.state.rank,
+        isCollapsed: this.state.isCollapsed,
+      };
+      sessionStorage.setItem(this.storageKey, JSON.stringify(data));
+    } catch (e) {
+      console.warn('[SPARK] Could not save filters to sessionStorage', e);
+    }
+  }
+
+  _clearSession() {
+    try {
+      sessionStorage.removeItem(this.storageKey);
+    } catch (e) {
+      console.warn('[SPARK] Could not clear filters from sessionStorage', e);
+    }
   }
 
   render() {
@@ -99,6 +145,20 @@ export default class FilterWidget {
             ` : `
               <span class="text-sm font-bold text-gray-800">Filter Venues</span>
             `}
+
+            <!-- CORE Rank Filter -->
+            <div class="flex items-center gap-2 pl-2 sm:border-l sm:border-gray-200">
+              <label for="filter-rank-select" class="text-sm font-semibold text-gray-700 whitespace-nowrap">CORE Rank:</label>
+              <select
+                id="filter-rank-select"
+                class="px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm bg-white text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 transition-all cursor-pointer"
+                aria-label="Filter by CORE rank"
+              >
+                <option value="all" ${this.state.rank === 'all' ? 'selected' : ''}>All Ranks</option>
+                <option value="A*" ${this.state.rank === 'A*' ? 'selected' : ''}>CORE A*</option>
+                <option value="A" ${this.state.rank === 'A' ? 'selected' : ''}>CORE A</option>
+              </select>
+            </div>
           </div>
 
           <!-- Buttons -->
@@ -246,6 +306,14 @@ export default class FilterWidget {
       if (endYrEl) endYrEl.addEventListener('input', onYearInput);
     }
 
+    // Rank select dropdown
+    const rankSelect = this.container.querySelector('#filter-rank-select');
+    if (rankSelect) {
+      rankSelect.addEventListener('change', e => {
+        this.state.rank = e.target.value || 'all';
+      });
+    }
+
     // Apply button
     const applyBtn = this.container.querySelector('#btn-apply-filters');
     if (applyBtn) {
@@ -261,6 +329,11 @@ export default class FilterWidget {
             this.state.endYear = isNaN(ey) ? null : ey;
           }
         }
+        const rankSel = this.container.querySelector('#filter-rank-select');
+        if (rankSel) {
+          this.state.rank = rankSel.value || 'all';
+        }
+        this._saveToSession();
         this._dispatch();
       });
     }
@@ -272,8 +345,10 @@ export default class FilterWidget {
         this.state.areas.clear();
         this.state.startYear = this.config.startYear || 2015;
         this.state.endYear = this.config.endYear || new Date().getFullYear();
+        this.state.rank = 'all';
         this.state.isCollapsed = true; // Collapse by default
 
+        this._clearSession();
         this.render();
         this._attachListeners();
         this._dispatch();
@@ -286,6 +361,7 @@ export default class FilterWidget {
       areas: new Set(this.state.areas),
       startYear: this.state.startYear,
       endYear: this.state.endYear,
+      rank: this.state.rank || 'all',
     };
   }
 }
