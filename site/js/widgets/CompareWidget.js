@@ -3,10 +3,11 @@
 // - Side-by-side multi-dimensional comparison for Institutions & Faculty
 // - Reliable 2-column responsive layout (.cmp-grid-2) that never collapses into a single column on desktop
 // - User-driven selection (no forced auto-selection, no biased featured tags)
-// - Independent pagination for publications with Prev/Next buttons (no jump-to-page input)
+// - Full conference taxonomy mapping (/api/conferences/) so faculty publications accurately resolve areas
+// - Automatic enrichment of institution top_faculty with areas, designations, and A* scores
+// - Independent pagination for publications with Prev/Next buttons (strictly no jump-to-page input)
 // - Accurate positive advantage calculations (+X.XX for whichever entity leads)
 // - Clear taxonomy mapping for "other" (Interdisciplinary & Other Computing) with filterable publications
-// - Full display of all top faculty without arbitrary truncations
 // - Multi-dimensional filters (Research Area, CORE Rank / Venue, Publication Year, Sorting)
 // - Interactive dual charts (Historical Trends 2015-2026 + Radar / Grouped Bar Discipline Breakdown)
 
@@ -82,7 +83,7 @@ const TAXONOMY_GROUPS = [
   },
 ];
 
-// Clean suggestions shown on input focus / click (no biased "featured" tags)
+// Clean suggestions shown on input focus / click
 const SUGGESTED_INSTITUTIONS = [
   { id: 1, name: 'IIIT Delhi', subtitle: 'New Delhi · National Rank #6' },
   { id: 3, name: 'IISc Bangalore', subtitle: 'Bengaluru · National Rank #1' },
@@ -175,12 +176,89 @@ export default class CompareWidget {
     this.fac1PubPage = 1;
     this.fac2PubPage = 1;
 
+    // Persistent caches for fast client-side responsiveness
+    this.facultyCache = new Map();
+    this.conferenceMap = new Map();
+    this._conferencesLoading = false;
+
     // Chart instances
     this.disciplineChart = null;
     this.trendsChart = null;
 
     if (!this.container) return;
     this.render();
+
+    // Preload conference dictionary to resolve publication areas accurately
+    this._ensureConferenceMap();
+  }
+
+  async _ensureConferenceMap() {
+    if (this.conferenceMap.size > 0 || this._conferencesLoading) return;
+    this._conferencesLoading = true;
+    try {
+      const confs = await fetchJSON(`${this.apiBase}/conferences/`);
+      const list = Array.isArray(confs) ? confs : (confs?.results || []);
+      list.forEach(c => {
+        if (c.acronym) {
+          this.conferenceMap.set(c.acronym.toUpperCase().trim(), c);
+        }
+      });
+    } catch (e) {
+      console.warn('[SPARK Compare] Conference map preload failed:', e);
+    } finally {
+      this._conferencesLoading = false;
+    }
+  }
+
+  _resolvePublicationArea(pub) {
+    if (pub.area && pub.area !== 'null' && pub.area !== '') {
+      return pub.area;
+    }
+    const rawConf = pub.venue || (typeof pub.conference === 'object' ? pub.conference?.acronym : pub.conference) || '';
+    const cleanConf = String(rawConf).toUpperCase().trim();
+
+    if (this.conferenceMap.has(cleanConf)) {
+      const c = this.conferenceMap.get(cleanConf);
+      if (c && c.area) return c.area;
+    }
+
+    if (AREA_TAXONOMY[cleanConf]) {
+      return AREA_TAXONOMY[cleanConf];
+    }
+
+    return 'other';
+  }
+
+  async _enrichInstitutionFaculty(inst) {
+    if (!inst || !Array.isArray(inst.top_faculty) || inst.top_faculty.length === 0) return;
+
+    // Enrich all top faculty with detailed profiles (areas, designation, a_star_score)
+    inst.top_faculty = await Promise.all(inst.top_faculty.map(async (f) => {
+      if (f.areas && Array.isArray(f.areas) && f.areas.length > 0 && f.designation) {
+        return f;
+      }
+      if (this.facultyCache.has(f.id)) {
+        const cached = this.facultyCache.get(f.id);
+        return { ...f, ...cached };
+      }
+      try {
+        const detail = await fetchJSON(`${this.apiBase}/faculty/${f.id}/`);
+        if (detail) {
+          const info = {
+            areas: detail.areas || [],
+            designation: detail.designation || detail.bio || f.designation || 'Faculty Member',
+            a_star_score: Number(detail.a_star_score || 0),
+            a_score: Number(detail.a_score || 0),
+            dblp_url: detail.dblp_url || null,
+          };
+          this.facultyCache.set(f.id, info);
+          return { ...f, ...info };
+        }
+      } catch (e) {
+        console.warn(`[SPARK] Could not enrich faculty ${f.id}:`, e);
+      }
+      return f;
+    }));
   }
 
   _buildAreaOptionsHTML() {
@@ -411,10 +489,15 @@ export default class CompareWidget {
     }
   }
 
-  _refreshCurrentComparison() {
+  async _refreshCurrentComparison() {
     if (this.activeTab === 'institutions' && this.inst1 && this.inst2) {
+      await Promise.all([
+        this._enrichInstitutionFaculty(this.inst1),
+        this._enrichInstitutionFaculty(this.inst2),
+      ]);
       this._renderInstitutionComparison();
     } else if (this.activeTab === 'faculty' && this.fac1 && this.fac2) {
+      await this._ensureConferenceMap();
       this._renderFacultyComparison();
     }
   }
@@ -496,6 +579,9 @@ export default class CompareWidget {
         this.inst1Trends = Array.isArray(trends) ? trends : (trends?.results || []);
         this.inst1Pubs = Array.isArray(pubs) ? pubs : (pubs?.results || []);
         this.inst1PubPage = 1;
+        
+        // Enrich faculty details with research areas
+        await this._enrichInstitutionFaculty(this.inst1);
         this._renderInstitutionComparison();
       }
     });
@@ -515,6 +601,9 @@ export default class CompareWidget {
         this.inst2Trends = Array.isArray(trends) ? trends : (trends?.results || []);
         this.inst2Pubs = Array.isArray(pubs) ? pubs : (pubs?.results || []);
         this.inst2PubPage = 1;
+
+        // Enrich faculty details with research areas
+        await this._enrichInstitutionFaculty(this.inst2);
         this._renderInstitutionComparison();
       }
     });
@@ -540,7 +629,8 @@ export default class CompareWidget {
     // Filter publications by active filters
     const filterPubs = (pubs) => {
       let list = pubs.filter(p => {
-        if (!matchesAreaFilter(p.area, this.areaFilter)) return false;
+        const effectiveArea = this._resolvePublicationArea(p);
+        if (!matchesAreaFilter(effectiveArea, this.areaFilter)) return false;
         const rank = p.core_rank || (p.conference && p.conference.core_rank) || '';
         const conf = p.conference?.acronym || p.conference || p.venue || '';
         if (!matchesRankFilter(rank, conf, this.rankFilter)) return false;
@@ -568,11 +658,12 @@ export default class CompareWidget {
     const aCount1 = filteredPubs1.filter(p => (p.core_rank === 'A' || p.conference?.core_rank === 'A')).length;
     const aCount2 = filteredPubs2.filter(p => (p.core_rank === 'A' || p.conference?.core_rank === 'A')).length;
 
-    // Filter faculty
+    // Filter faculty matching research area
     const filterFac = (facList) => {
       let list = (facList || []).filter(f => {
         if (this.areaFilter !== 'all') {
-          if (!f.areas || !matchesAreaFilter(f.areas, this.areaFilter)) return false;
+          if (!f.areas || !Array.isArray(f.areas) || f.areas.length === 0) return false;
+          return matchesAreaFilter(f.areas, this.areaFilter);
         }
         return true;
       });
@@ -676,6 +767,16 @@ export default class CompareWidget {
     const startIdx2 = (this.inst2PubPage - 1) * PUBS_PER_PAGE;
     const endIdx2 = Math.min(startIdx2 + PUBS_PER_PAGE, filteredPubs2.length);
     const paginatedPubs2 = filteredPubs2.slice(startIdx2, endIdx2);
+
+    const getFacultyAreaBadges = (areas) => {
+      if (!Array.isArray(areas) || areas.length === 0) return '';
+      const broads = Array.from(new Set(areas.map(a => {
+        const broad = AREA_TAXONOMY[a] || a;
+        const info = BROAD_AREAS.find(b => b.id === broad);
+        return info ? info.name : broad;
+      }))).slice(0, 3);
+      return broads.map(b => `<span class="px-1.5 py-0.2 rounded bg-gray-100 text-gray-600 text-3xs font-medium mr-1">${escapeHTML(b)}</span>`).join('');
+    };
 
     container.innerHTML = `
       <div class="space-y-6">
@@ -789,7 +890,7 @@ export default class CompareWidget {
             <div class="space-y-1">
               <div class="flex items-center justify-between text-xs font-semibold">
                 <span class="text-teal-700 font-mono font-bold">${fac1List.length} faculty</span>
-                <span class="text-gray-500 uppercase text-2xs font-bold">Key Faculty Members</span>
+                <span class="text-gray-500 uppercase text-2xs font-bold">Faculty Matching Filters</span>
                 <span class="text-blue-700 font-mono font-bold">${fac2List.length} faculty</span>
               </div>
               <div class="h-3 w-full bg-gray-100 rounded-full overflow-hidden flex">
@@ -864,7 +965,7 @@ export default class CompareWidget {
           </div>
         </div>
 
-        <!-- Side-by-Side Top Faculty Comparison (ALL faculty listed, no slice cut-off) -->
+        <!-- Side-by-Side Top Faculty Comparison (ALL matching faculty displayed with area tags) -->
         <div class="cmp-grid-2">
           <!-- Inst 1 Faculty -->
           <div class="card p-6 bg-white rounded-2xl border border-gray-100 shadow-sm space-y-3">
@@ -873,20 +974,24 @@ export default class CompareWidget {
                 <span class="w-2.5 h-2.5 rounded-full bg-teal-500"></span>
                 Top Faculty · ${escapeHTML(i1.name)}
               </h4>
-              <span class="text-xs font-mono text-teal-700 font-semibold">${fac1List.length} listed</span>
+              <span class="text-xs font-mono text-teal-700 font-semibold">${fac1List.length} ${this.areaFilter === 'all' ? 'listed' : 'matching'}</span>
             </div>
             <ul class="divide-y divide-gray-100">
               ${fac1List.map((f, idx) => `
-                <li class="py-2.5 flex items-center justify-between">
+                <li class="py-2.5 flex items-center justify-between gap-2">
                   <div class="min-w-0 pr-2">
                     <span class="text-xs font-semibold text-gray-900 block truncate">${idx + 1}. ${escapeHTML(f.name)}</span>
-                    <span class="text-2xs text-gray-400">${escapeHTML(f.designation || 'Faculty Member')}</span>
+                    <span class="text-2xs text-gray-400 block truncate">${escapeHTML(f.designation || 'Faculty Member')}</span>
+                    <div class="flex items-center gap-1 mt-1 flex-wrap">${getFacultyAreaBadges(f.areas)}</div>
                   </div>
-                  <span class="text-xs font-mono font-bold text-teal-700 bg-teal-50 px-2.5 py-0.5 rounded-full flex-shrink-0">
-                    ${Number(f.score || 0).toFixed(2)} pts
-                  </span>
+                  <div class="text-right flex-shrink-0">
+                    <span class="text-xs font-mono font-bold text-teal-700 bg-teal-50 px-2.5 py-0.5 rounded-full block">
+                      ${Number(f.score || 0).toFixed(2)} pts
+                    </span>
+                    ${f.a_star_score ? `<span class="text-3xs font-mono text-amber-800 font-bold block mt-0.5">${Number(f.a_star_score).toFixed(2)} A* pts</span>` : ''}
+                  </div>
                 </li>
-              `).join('') || '<li class="py-4 text-xs text-gray-400 text-center">No faculty match selected filters</li>'}
+              `).join('') || '<li class="py-4 text-xs text-gray-400 text-center">No faculty match selected research area</li>'}
             </ul>
           </div>
 
@@ -897,20 +1002,24 @@ export default class CompareWidget {
                 <span class="w-2.5 h-2.5 rounded-full bg-blue-500"></span>
                 Top Faculty · ${escapeHTML(i2.name)}
               </h4>
-              <span class="text-xs font-mono text-blue-700 font-semibold">${fac2List.length} listed</span>
+              <span class="text-xs font-mono text-blue-700 font-semibold">${fac2List.length} ${this.areaFilter === 'all' ? 'listed' : 'matching'}</span>
             </div>
             <ul class="divide-y divide-gray-100">
               ${fac2List.map((f, idx) => `
-                <li class="py-2.5 flex items-center justify-between">
+                <li class="py-2.5 flex items-center justify-between gap-2">
                   <div class="min-w-0 pr-2">
                     <span class="text-xs font-semibold text-gray-900 block truncate">${idx + 1}. ${escapeHTML(f.name)}</span>
-                    <span class="text-2xs text-gray-400">${escapeHTML(f.designation || 'Faculty Member')}</span>
+                    <span class="text-2xs text-gray-400 block truncate">${escapeHTML(f.designation || 'Faculty Member')}</span>
+                    <div class="flex items-center gap-1 mt-1 flex-wrap">${getFacultyAreaBadges(f.areas)}</div>
                   </div>
-                  <span class="text-xs font-mono font-bold text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded-full flex-shrink-0">
-                    ${Number(f.score || 0).toFixed(2)} pts
-                  </span>
+                  <div class="text-right flex-shrink-0">
+                    <span class="text-xs font-mono font-bold text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded-full block">
+                      ${Number(f.score || 0).toFixed(2)} pts
+                    </span>
+                    ${f.a_star_score ? `<span class="text-3xs font-mono text-amber-800 font-bold block mt-0.5">${Number(f.a_star_score).toFixed(2)} A* pts</span>` : ''}
+                  </div>
                 </li>
-              `).join('') || '<li class="py-4 text-xs text-gray-400 text-center">No faculty match selected filters</li>'}
+              `).join('') || '<li class="py-4 text-xs text-gray-400 text-center">No faculty match selected research area</li>'}
             </ul>
           </div>
         </div>
@@ -930,7 +1039,8 @@ export default class CompareWidget {
                   const conf = p.conference?.acronym || p.conference || p.venue || '';
                   const rank = p.core_rank || (p.conference && p.conference.core_rank) || '';
                   const badgeClass = rank === 'A*' ? 'badge-a-star' : (rank === 'A' ? 'badge-a' : 'badge-journal');
-                  const areaLabel = p.area ? `Area: ${p.area}` : 'Interdisciplinary / Other';
+                  const resolvedArea = this._resolvePublicationArea(p);
+                  const areaLabel = resolvedArea !== 'other' ? `Area: ${resolvedArea}` : 'Interdisciplinary / Other';
                   return `
                     <li class="py-2.5 space-y-1">
                       <p class="text-xs font-semibold text-gray-800 leading-snug">${escapeHTML(p.title)}</p>
@@ -987,7 +1097,8 @@ export default class CompareWidget {
                   const conf = p.conference?.acronym || p.conference || p.venue || '';
                   const rank = p.core_rank || (p.conference && p.conference.core_rank) || '';
                   const badgeClass = rank === 'A*' ? 'badge-a-star' : (rank === 'A' ? 'badge-a' : 'badge-journal');
-                  const areaLabel = p.area ? `Area: ${p.area}` : 'Interdisciplinary / Other';
+                  const resolvedArea = this._resolvePublicationArea(p);
+                  const areaLabel = resolvedArea !== 'other' ? `Area: ${resolvedArea}` : 'Interdisciplinary / Other';
                   return `
                     <li class="py-2.5 space-y-1">
                       <p class="text-xs font-semibold text-gray-800 leading-snug">${escapeHTML(p.title)}</p>
@@ -1338,6 +1449,7 @@ export default class CompareWidget {
       onSelect: async (item) => {
         this.fac1 = await fetchJSON(`${this.apiBase}/faculty/${item.id}/`);
         this.fac1PubPage = 1;
+        await this._ensureConferenceMap();
         this._renderFacultyComparison();
       }
     });
@@ -1350,6 +1462,7 @@ export default class CompareWidget {
       onSelect: async (item) => {
         this.fac2 = await fetchJSON(`${this.apiBase}/faculty/${item.id}/`);
         this.fac2PubPage = 1;
+        await this._ensureConferenceMap();
         this._renderFacultyComparison();
       }
     });
@@ -1374,21 +1487,30 @@ export default class CompareWidget {
     const a1 = Number(f1.a_score || 0);
     const a2 = Number(f2.a_score || 0);
 
-    // Extract publications from authorships
+    // Extract publications from authorships with resolved areas and ranks
     const extractPubs = (fac) => {
       const pubs = [];
       (fac.authorships || []).forEach(a => {
         const p = a.publication;
         if (p) {
           const conf = p.venue || (typeof p.conference === 'object' ? p.conference.acronym : p.conference) || '';
-          const rank = p.core_rank || (typeof p.conference === 'object' ? p.conference.core_rank : '') || '';
+          let rank = p.core_rank || (typeof p.conference === 'object' ? p.conference.core_rank : '') || '';
+          
+          // Resolve conference metadata if rank is missing
+          if (!rank && this.conferenceMap.has(String(conf).toUpperCase().trim())) {
+            rank = this.conferenceMap.get(String(conf).toUpperCase().trim())?.core_rank || '';
+          }
+
+          const resolvedArea = this._resolvePublicationArea(p);
+
           pubs.push({
+            id: p.id || '',
             title: p.title || '',
             year: p.year || '',
             venue: conf,
             rank: rank,
-            credit: a.credit || 0,
-            area: p.area || ''
+            credit: a.credit && Number(a.credit) > 0 ? Number(a.credit) : null,
+            area: resolvedArea
           });
         }
       });
@@ -1607,15 +1729,16 @@ export default class CompareWidget {
               <ul class="divide-y divide-gray-100">
                 ${paginatedPubs1.map(p => {
                   const badgeClass = p.rank === 'A*' ? 'badge-a-star' : (p.rank === 'A' ? 'badge-a' : 'badge-journal');
-                  const areaLabel = p.area ? `Area: ${p.area}` : 'Interdisciplinary / Other';
+                  const areaLabel = p.area !== 'other' ? `Area: ${p.area}` : 'Interdisciplinary / Other';
+                  const creditBadge = p.credit != null ? `<span class="text-teal-700 font-semibold font-mono">· credit: ${p.credit.toFixed(2)}</span>` : '';
                   return `
                     <li class="py-2.5 space-y-1">
                       <p class="text-xs font-semibold text-gray-800 leading-snug">${escapeHTML(p.title)}</p>
                       <div class="flex items-center gap-2 text-2xs text-gray-500 flex-wrap">
                         ${p.rank ? `<span class="px-1.5 py-0.2 rounded font-bold ${badgeClass}">${escapeHTML(p.rank)}</span>` : ''}
-                        <span class="font-medium text-teal-700">${escapeHTML(p.venue)}</span>
+                        ${p.venue ? `<span class="font-medium text-teal-700">${escapeHTML(p.venue)}</span>` : ''}
                         <span>${escapeHTML(p.year)}</span>
-                        <span class="text-gray-400">· credit: ${Number(p.credit).toFixed(2)}</span>
+                        ${creditBadge}
                         <span class="px-1.5 py-0.2 rounded bg-gray-100 text-gray-600 text-3xs font-medium">${escapeHTML(areaLabel)}</span>
                       </div>
                     </li>
@@ -1663,15 +1786,16 @@ export default class CompareWidget {
               <ul class="divide-y divide-gray-100">
                 ${paginatedPubs2.map(p => {
                   const badgeClass = p.rank === 'A*' ? 'badge-a-star' : (p.rank === 'A' ? 'badge-a' : 'badge-journal');
-                  const areaLabel = p.area ? `Area: ${p.area}` : 'Interdisciplinary / Other';
+                  const areaLabel = p.area !== 'other' ? `Area: ${p.area}` : 'Interdisciplinary / Other';
+                  const creditBadge = p.credit != null ? `<span class="text-blue-700 font-semibold font-mono">· credit: ${p.credit.toFixed(2)}</span>` : '';
                   return `
                     <li class="py-2.5 space-y-1">
                       <p class="text-xs font-semibold text-gray-800 leading-snug">${escapeHTML(p.title)}</p>
                       <div class="flex items-center gap-2 text-2xs text-gray-500 flex-wrap">
                         ${p.rank ? `<span class="px-1.5 py-0.2 rounded font-bold ${badgeClass}">${escapeHTML(p.rank)}</span>` : ''}
-                        <span class="font-medium text-blue-700">${escapeHTML(p.venue)}</span>
+                        ${p.venue ? `<span class="font-medium text-blue-700">${escapeHTML(p.venue)}</span>` : ''}
                         <span>${escapeHTML(p.year)}</span>
-                        <span class="text-gray-400">· credit: ${Number(p.credit).toFixed(2)}</span>
+                        ${creditBadge}
                         <span class="px-1.5 py-0.2 rounded bg-gray-100 text-gray-600 text-3xs font-medium">${escapeHTML(areaLabel)}</span>
                       </div>
                     </li>
