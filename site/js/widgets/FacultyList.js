@@ -58,7 +58,9 @@ export default class FacultyListWidget {
         const instObj = (typeof f.institution === 'object' && f.institution !== null)
           ? f.institution
           : { id: f.institution_id || '', name: f.institution || '' };
-        const instRank = f.institution_rank || f.institution?.rank || f.inst_rank || null;
+        const instRank = (f.institution_rank !== undefined)
+          ? f.institution_rank
+          : (f.institution?.rank || f.inst_rank || null);
         return {
           id:           f.id,
           name:         f.name || f.faculty_name || '',
@@ -75,13 +77,17 @@ export default class FacultyListWidget {
     if (rankFilter === 'A*') {
       scoreSuffix = 'A* pts';
       flat = flat.map(f => {
-        const aStar = f.a_star_score != null ? f.a_star_score : (FACULTY_SCORES[f.id]?.a_star_score || 0);
+        const aStar = (f.a_star_score != null && f.a_star_score > 0)
+          ? f.a_star_score
+          : (FACULTY_SCORES[f.id]?.a_star_score ?? f.score);
         return { ...f, score: aStar };
       }).filter(f => Number(f.score) > 0);
     } else if (rankFilter === 'A') {
       scoreSuffix = 'A pts';
       flat = flat.map(f => {
-        const aScore = f.a_score != null ? f.a_score : (FACULTY_SCORES[f.id]?.a_score || 0);
+        const aScore = (f.a_score != null && f.a_score > 0)
+          ? f.a_score
+          : (FACULTY_SCORES[f.id]?.a_score ?? f.score);
         return { ...f, score: aScore };
       }).filter(f => Number(f.score) > 0);
     }

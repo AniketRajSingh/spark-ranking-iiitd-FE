@@ -14,7 +14,28 @@ export default async function fetchJSON(url, opts = {}) {
   try {
     const res = await fetch(url, { signal: controller.signal });
     clearTimeout(timer);
-    if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+    if (!res.ok) {
+      let errorDetail = '';
+      try {
+        const errorJson = await res.json();
+        if (errorJson) {
+          if (typeof errorJson === 'string') {
+            errorDetail = errorJson;
+          } else if (typeof errorJson === 'object') {
+            errorDetail = Object.entries(errorJson)
+              .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`)
+              .join('; ');
+          }
+        }
+      } catch (_) {
+        // Non-JSON response body
+      }
+      const msg = errorDetail ? `HTTP ${res.status}: ${errorDetail}` : `HTTP ${res.status}: ${res.statusText}`;
+      const err = new Error(msg);
+      err.status = res.status;
+      err.detail = errorDetail;
+      throw err;
+    }
     return await res.json();
   } catch (err) {
     clearTimeout(timer);
