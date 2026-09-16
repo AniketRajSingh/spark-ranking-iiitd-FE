@@ -17,8 +17,6 @@
 import fetchJSON from '../utils/fetchJSON.js';
 import { escapeHTML } from '../utils/sanitize.js';
 import { AREA_TAXONOMY, BROAD_AREAS } from '../utils/areaTaxonomy.js';
-import INSTITUTION_SCORES from '../data/institutionScores.js';
-import FACULTY_SCORES from '../data/facultyScores.js';
 
 const PUBS_PER_PAGE = 8;
 
@@ -163,7 +161,13 @@ export default class CompareWidget {
     this.yearFilter = 'all';
     this.sortByFaculty = 'score_desc'; // 'score_desc' | 'astar_desc' | 'name_asc'
     this.sortByPubs = 'year_desc'; // 'year_desc' | 'rank_desc' | 'title_asc'
-    this.chartType = 'radar'; // 'radar' | 'bar'
+    this.chartType = 'bar'; // 'bar' | 'radar' (Grouped Bar is default)
+
+    // Dynamic query caching
+    this.rankingsCache = new Map();
+    this.facultyLeaderboardCache = new Map();
+    this.filteredRankings = null;
+    this.filteredFacultyMap = null;
 
     // Institution comparison state (Unselected by default — user selects)
     this.inst1 = null;
@@ -283,20 +287,114 @@ export default class CompareWidget {
     return parts.length > 0 ? parts.join(' · ') : 'Overall';
   }
 
-  // Dynamically compute institution score matching active filters according to methodology
-  _computeInstitutionScore(pubs, defaultScore, instId = null) {
-    const isDefault = (this.areaFilter === 'all' && this.rankFilter === 'all' && this.yearFilter === 'all');
-    if (isDefault) return Number(defaultScore || 0);
-
-    // If rank filter is active and area/year are default, use verified institution score if available
-    if (instId && this.areaFilter === 'all' && this.yearFilter === 'all') {
-      const tierData = INSTITUTION_SCORES[instId];
-      if (tierData) {
-        if (this.rankFilter === 'A*') return tierData.a_star_score;
-        if (this.rankFilter === 'A') return tierData.a_score;
-        if (this.rankFilter === 'Journal') return tierData.journal_score;
+  _getQueryParams() {
+    const params = new URLSearchParams();
+    if (this.rankFilter !== 'all') {
+      params.set('rank', this.rankFilter);
+    }
+    if (this.areaFilter !== 'all') {
+      if (this.areaFilter.endsWith(':all')) {
+        const broad = this.areaFilter.split(':')[0];
+        const codes = [];
+        for (const [code, b] of Object.entries(AREA_TAXONOMY)) {
+          if (b === broad) codes.push(code);
+        }
+        if (codes.length > 0) {
+          params.set('area', codes.join(','));
+        }
+      } else if (this.areaFilter === 'other') {
+        params.set('area', 'other');
+      } else {
+        params.set('area', this.areaFilter);
       }
     }
+    if (this.yearFilter !== 'all') {
+      if (this.yearFilter === '5yr') {
+        params.set('start_year', '2022');
+        params.set('end_year', '2026');
+      } else if (this.yearFilter === '3yr') {
+        params.set('start_year', '2024');
+        params.set('end_year', '2026');
+      } else if (this.yearFilter === '2026') {
+        params.set('start_year', '2026');
+        params.set('end_year', '2026');
+      }
+    }
+    return params;
+  }
+
+  async _fetchFilteredRankings() {
+    const isDefault = (this.areaFilter === 'all' && this.rankFilter === 'all' && this.yearFilter === 'all');
+    if (isDefault) {
+      this.filteredRankings = null;
+      return null;
+    }
+
+    const params = this._getQueryParams();
+    const queryStr = params.toString();
+    if (this.rankingsCache && this.rankingsCache.has(queryStr)) {
+      this.filteredRankings = this.rankingsCache.get(queryStr);
+      return this.filteredRankings;
+    }
+
+    try {
+      const data = await fetchJSON(`${this.apiBase}/rankings/?${queryStr}`);
+      const list = Array.isArray(data) ? data : (data?.results || []);
+      if (!this.rankingsCache) this.rankingsCache = new Map();
+      this.rankingsCache.set(queryStr, list);
+      this.filteredRankings = list;
+      return list;
+    } catch (e) {
+      console.warn('[SPARK] Failed to fetch filtered rankings:', e);
+      this.filteredRankings = null;
+      return null;
+    }
+  }
+
+  async _fetchFilteredFacultyScores() {
+    const isDefault = (this.areaFilter === 'all' && this.rankFilter === 'all' && this.yearFilter === 'all');
+    if (isDefault) {
+      this.filteredFacultyMap = null;
+      return null;
+    }
+
+    const params = this._getQueryParams();
+    const queryStr = params.toString();
+    if (this.facultyLeaderboardCache && this.facultyLeaderboardCache.has(queryStr)) {
+      this.filteredFacultyMap = this.facultyLeaderboardCache.get(queryStr);
+      return this.filteredFacultyMap;
+    }
+
+    try {
+      const data = await fetchJSON(`${this.apiBase}/faculty/?${queryStr}`);
+      const list = (Array.isArray(data) ? data : (data?.results || data?.faculty || []))
+        .filter(x => Number(x.score || 0) > 0)
+        .sort((a, b) => (Number(b.score) || 0) - (Number(a.score) || 0));
+
+      const map = new Map();
+      list.forEach((f, idx) => {
+        map.set(f.id, {
+          score: Number(f.score || 0),
+          rank: idx + 1,
+          total: list.length,
+          institution_rank: f.institution_rank || null
+        });
+      });
+      if (!this.facultyLeaderboardCache) this.facultyLeaderboardCache = new Map();
+      this.facultyLeaderboardCache.set(queryStr, map);
+      this.filteredFacultyMap = map;
+      return map;
+    } catch (e) {
+      console.warn('[SPARK] Failed to fetch filtered faculty leaderboard:', e);
+      this.filteredFacultyMap = null;
+      return null;
+    }
+  }
+
+  // Dynamically compute institution score matching active filters according to methodology
+  _computeInstitutionScore(pubs, defaultScore) {
+    const isDefault = (this.areaFilter === 'all' && this.rankFilter === 'all' && this.yearFilter === 'all');
+    if (isDefault) return Number(defaultScore || 0);
 
     if (!pubs || pubs.length === 0) return 0.0;
 
@@ -617,10 +715,14 @@ export default class CompareWidget {
       await Promise.all([
         this._enrichInstitutionFaculty(this.inst1),
         this._enrichInstitutionFaculty(this.inst2),
+        this._fetchFilteredRankings(),
       ]);
       this._renderInstitutionComparison();
     } else if (this.activeTab === 'faculty' && this.fac1 && this.fac2) {
-      await this._ensureConferenceMap();
+      await Promise.all([
+        this._ensureConferenceMap(),
+        this._fetchFilteredFacultyScores(),
+      ]);
       this._renderFacultyComparison();
     }
   }
@@ -704,7 +806,10 @@ export default class CompareWidget {
         this.inst1PubPage = 1;
         
         // Enrich faculty details with research areas
-        await this._enrichInstitutionFaculty(this.inst1);
+        await Promise.all([
+          this._enrichInstitutionFaculty(this.inst1),
+          this._fetchFilteredRankings(),
+        ]);
         this._renderInstitutionComparison();
       }
     });
@@ -726,7 +831,10 @@ export default class CompareWidget {
         this.inst2PubPage = 1;
 
         // Enrich faculty details with research areas
-        await this._enrichInstitutionFaculty(this.inst2);
+        await Promise.all([
+          this._enrichInstitutionFaculty(this.inst2),
+          this._fetchFilteredRankings(),
+        ]);
         this._renderInstitutionComparison();
       }
     });
@@ -748,10 +856,26 @@ export default class CompareWidget {
     const filterSummary = this._getActiveFilterSummary();
 
     // Dynamically calculate scores based on active filters (e.g. A*, A, area, year)
-    const score1 = this._computeInstitutionScore(this.inst1Pubs, i1.score, i1.id);
-    const score2 = this._computeInstitutionScore(this.inst2Pubs, i2.score, i2.id);
-    const rank1 = i1.rank ? Number(i1.rank) : 999;
-    const rank2 = i2.rank ? Number(i2.rank) : 999;
+    let score1 = Number(i1.score || 0);
+    let score2 = Number(i2.score || 0);
+    let rank1 = i1.rank ? Number(i1.rank) : null;
+    let rank2 = i2.rank ? Number(i2.rank) : null;
+    let topFac1 = i1.top_faculty || [];
+    let topFac2 = i2.top_faculty || [];
+
+    if (isFiltered && this.filteredRankings) {
+      const r1 = this.filteredRankings.find(r => (r.institution?.id || r.id) === i1.id);
+      const r2 = this.filteredRankings.find(r => (r.institution?.id || r.id) === i2.id);
+      score1 = r1 ? Number(r1.score || 0) : 0;
+      score2 = r2 ? Number(r2.score || 0) : 0;
+      rank1 = r1 ? Number(r1.rank || 0) : null;
+      rank2 = r2 ? Number(r2.rank || 0) : null;
+      if (r1?.top_faculty && r1.top_faculty.length > 0) topFac1 = r1.top_faculty;
+      if (r2?.top_faculty && r2.top_faculty.length > 0) topFac2 = r2.top_faculty;
+    } else if (isFiltered) {
+      score1 = this._computeInstitutionScore(this.inst1Pubs, i1.score);
+      score2 = this._computeInstitutionScore(this.inst2Pubs, i2.score);
+    }
 
     // Filter publications by active filters
     const filterPubs = (pubs) => {
@@ -787,27 +911,24 @@ export default class CompareWidget {
 
     // Filter faculty matching research area & sort appropriately
     const filterFac = (facList) => {
-      let list = (facList || []).map(f => {
-        const enriched = FACULTY_SCORES[f.id];
-        return {
-          ...f,
-          a_star_score: f.a_star_score != null ? f.a_star_score : (enriched?.a_star_score || 0),
-          a_score: f.a_score != null ? f.a_score : (enriched?.a_score || 0),
-        };
-      }).filter(f => {
+      let list = (facList || []).map(f => ({
+        ...f,
+        a_star_score: Number(f.a_star_score || 0),
+        a_score: Number(f.a_score || 0),
+      })).filter(f => {
         if (this.areaFilter !== 'all') {
-          if (!f.areas || !Array.isArray(f.areas) || f.areas.length === 0) return false;
+          if (!f.areas || !Array.isArray(f.areas) || f.areas.length === 0) return true;
           return matchesAreaFilter(f.areas, this.areaFilter);
         }
         return true;
       });
 
       if (this.rankFilter === 'A*') {
-        list = list.filter(f => (f.a_star_score || 0) > 0);
-        list.sort((a, b) => (b.a_star_score || 0) - (a.a_star_score || 0));
+        list = list.filter(f => (f.a_star_score || f.score || 0) > 0);
+        list.sort((a, b) => (b.a_star_score || b.score || 0) - (a.a_star_score || a.score || 0));
       } else if (this.rankFilter === 'A') {
-        list = list.filter(f => (f.a_score || 0) > 0);
-        list.sort((a, b) => (b.a_score || 0) - (a.a_score || 0));
+        list = list.filter(f => (f.a_score || f.score || 0) > 0);
+        list.sort((a, b) => (b.a_score || b.score || 0) - (a.a_score || a.score || 0));
       } else if (this.sortByFaculty === 'score_desc') {
         list.sort((a, b) => (b.score || 0) - (a.score || 0));
       } else if (this.sortByFaculty === 'astar_desc') {
@@ -818,8 +939,22 @@ export default class CompareWidget {
       return list;
     };
 
-    const fac1List = filterFac(i1.top_faculty || []);
-    const fac2List = filterFac(i2.top_faculty || []);
+    const fac1List = filterFac(topFac1);
+    const fac2List = filterFac(topFac2);
+
+    // Calculate total points of the top faculty
+    const facPts1 = fac1List.reduce((sum, f) => {
+      let pts = Number(f.score || 0);
+      if (this.rankFilter === 'A*' && f.a_star_score) pts = Number(f.a_star_score);
+      else if (this.rankFilter === 'A' && f.a_score) pts = Number(f.a_score);
+      return sum + pts;
+    }, 0);
+    const facPts2 = fac2List.reduce((sum, f) => {
+      let pts = Number(f.score || 0);
+      if (this.rankFilter === 'A*' && f.a_star_score) pts = Number(f.a_star_score);
+      else if (this.rankFilter === 'A' && f.a_score) pts = Number(f.a_score);
+      return sum + pts;
+    }, 0);
 
     // Disciplines breakdown dynamically calculated for active rank/year filters
     const b1 = i1.area_scores || i1.area_breakdown || {};
@@ -927,7 +1062,9 @@ export default class CompareWidget {
                 <span class="text-2xs text-gray-400 font-bold uppercase tracking-wider block">
                   ${isFiltered ? `Score (${escapeHTML(filterSummary)})` : 'SPARK Score'}
                 </span>
-                <span class="inline-block mt-1 text-xs font-bold font-mono px-2.5 py-0.5 rounded-full ${rank1 < rank2 ? 'bg-teal-100 text-teal-800 border border-teal-200' : 'bg-gray-100 text-gray-700'}">National Rank #${i1.rank || '—'}</span>
+                <span class="inline-block mt-1 text-xs font-bold font-mono px-2.5 py-0.5 rounded-full ${rank1 != null && (rank2 == null || rank1 < rank2) ? 'bg-teal-100 text-teal-800 border border-teal-200' : 'bg-gray-100 text-gray-700'}">
+                  ${rank1 != null ? `National Rank #${rank1}` : 'Unranked in Filter'}
+                </span>
               </div>
             </div>
             <p class="text-xs text-gray-500 leading-relaxed">${escapeHTML(i1.description || 'Indian premier computer science research institution.')}</p>
@@ -946,7 +1083,9 @@ export default class CompareWidget {
                 <span class="text-2xs text-gray-400 font-bold uppercase tracking-wider block">
                   ${isFiltered ? `Score (${escapeHTML(filterSummary)})` : 'SPARK Score'}
                 </span>
-                <span class="inline-block mt-1 text-xs font-bold font-mono px-2.5 py-0.5 rounded-full ${rank2 < rank1 ? 'bg-blue-100 text-blue-800 border border-blue-200' : 'bg-gray-100 text-gray-700'}">National Rank #${i2.rank || '—'}</span>
+                <span class="inline-block mt-1 text-xs font-bold font-mono px-2.5 py-0.5 rounded-full ${rank2 != null && (rank1 == null || rank2 < rank1) ? 'bg-blue-100 text-blue-800 border border-blue-200' : 'bg-gray-100 text-gray-700'}">
+                  ${rank2 != null ? `National Rank #${rank2}` : 'Unranked in Filter'}
+                </span>
               </div>
             </div>
             <p class="text-xs text-gray-500 leading-relaxed">${escapeHTML(i2.description || 'Indian premier computer science research institution.')}</p>
@@ -1022,16 +1161,16 @@ export default class CompareWidget {
               </div>
             </div>
 
-            <!-- Metric 5: Active Faculty Size -->
+            <!-- Metric 5: Top Faculty Points -->
             <div class="space-y-1">
               <div class="flex items-center justify-between text-xs font-semibold">
-                <span class="text-teal-700 font-mono font-bold">${fac1List.length} faculty</span>
-                <span class="text-gray-500 uppercase text-2xs font-bold">Faculty Matching Filters</span>
-                <span class="text-blue-700 font-mono font-bold">${fac2List.length} faculty</span>
+                <span class="text-teal-700 font-mono font-bold">${facPts1.toFixed(2)} pts <span class="text-gray-400 text-3xs font-normal">(${fac1List.length} faculty)</span></span>
+                <span class="text-gray-500 uppercase text-2xs font-bold">Top Faculty Points</span>
+                <span class="text-blue-700 font-mono font-bold">${facPts2.toFixed(2)} pts <span class="text-gray-400 text-3xs font-normal">(${fac2List.length} faculty)</span></span>
               </div>
               <div class="h-3 w-full bg-gray-100 rounded-full overflow-hidden flex">
-                <div class="meter-fill-inst1 h-full" style="width: ${(fac1List.length / ((fac1List.length + fac2List.length) || 1) * 100)}%;"></div>
-                <div class="meter-fill-inst2 h-full" style="width: ${(fac2List.length / ((fac1List.length + fac2List.length) || 1) * 100)}%;"></div>
+                <div class="meter-fill-inst1 h-full" style="width: ${(facPts1 / ((facPts1 + facPts2) || 1) * 100)}%;"></div>
+                <div class="meter-fill-inst2 h-full" style="width: ${(facPts2 / ((facPts1 + facPts2) || 1) * 100)}%;"></div>
               </div>
             </div>
           </div>
@@ -1059,11 +1198,11 @@ export default class CompareWidget {
                 <p class="text-xs text-gray-400">Points distribution matching active filters (${escapeHTML(filterSummary)})</p>
               </div>
               <div class="inline-flex p-1 bg-gray-100 rounded-lg">
-                <button id="cmp-chart-radar-btn" class="px-2.5 py-1 text-xs font-semibold rounded-md transition-all ${this.chartType === 'radar' ? 'bg-white text-teal-700 shadow-sm' : 'text-gray-500 hover:text-gray-900'}">
-                  Radar
-                </button>
                 <button id="cmp-chart-bar-btn" class="px-2.5 py-1 text-xs font-semibold rounded-md transition-all ${this.chartType === 'bar' ? 'bg-white text-teal-700 shadow-sm' : 'text-gray-500 hover:text-gray-900'}">
                   Grouped Bar
+                </button>
+                <button id="cmp-chart-radar-btn" class="px-2.5 py-1 text-xs font-semibold rounded-md transition-all ${this.chartType === 'radar' ? 'bg-white text-teal-700 shadow-sm' : 'text-gray-500 hover:text-gray-900'}">
+                  Radar
                 </button>
               </div>
             </div>
@@ -1583,7 +1722,10 @@ export default class CompareWidget {
       onSelect: async (item) => {
         this.fac1 = await fetchJSON(`${this.apiBase}/faculty/${item.id}/`);
         this.fac1PubPage = 1;
-        await this._ensureConferenceMap();
+        await Promise.all([
+          this._ensureConferenceMap(),
+          this._fetchFilteredFacultyScores(),
+        ]);
         this._renderFacultyComparison();
       }
     });
@@ -1596,7 +1738,10 @@ export default class CompareWidget {
       onSelect: async (item) => {
         this.fac2 = await fetchJSON(`${this.apiBase}/faculty/${item.id}/`);
         this.fac2PubPage = 1;
-        await this._ensureConferenceMap();
+        await Promise.all([
+          this._ensureConferenceMap(),
+          this._fetchFilteredFacultyScores(),
+        ]);
         this._renderFacultyComparison();
       }
     });
@@ -1614,24 +1759,44 @@ export default class CompareWidget {
     const f1 = this.fac1;
     const f2 = this.fac2;
 
-    const aStar1 = Number(f1.a_star_score != null ? f1.a_star_score : (FACULTY_SCORES[f1.id]?.a_star_score || 0));
-    const aStar2 = Number(f2.a_star_score != null ? f2.a_star_score : (FACULTY_SCORES[f2.id]?.a_star_score || 0));
-    const a1 = Number(f1.a_score != null ? f1.a_score : (FACULTY_SCORES[f1.id]?.a_score || 0));
-    const a2 = Number(f2.a_score != null ? f2.a_score : (FACULTY_SCORES[f2.id]?.a_score || 0));
+    const isFiltered = (this.areaFilter !== 'all' || this.rankFilter !== 'all' || this.yearFilter !== 'all');
+    const filterSummary = this._getActiveFilterSummary();
 
-    // Dynamically adjust displayed score for faculty according to active rank filter
+    const aStar1 = Number(f1.a_star_score || 0);
+    const aStar2 = Number(f2.a_star_score || 0);
+    const a1 = Number(f1.a_score || 0);
+    const a2 = Number(f2.a_score || 0);
+
+    // Dynamically adjust displayed score for faculty according to active rank / area / year filters
     let s1 = Number(f1.score || 0);
     let s2 = Number(f2.score || 0);
-    let scoreLabel = 'Total Points';
+    let rankInfo1 = null;
+    let rankInfo2 = null;
 
-    if (this.rankFilter === 'A*') {
+    if (isFiltered && this.filteredFacultyMap) {
+      const info1 = this.filteredFacultyMap.get(f1.id);
+      const info2 = this.filteredFacultyMap.get(f2.id);
+      s1 = info1 ? info1.score : 0;
+      s2 = info2 ? info2.score : 0;
+      rankInfo1 = info1;
+      rankInfo2 = info2;
+    } else if (this.rankFilter === 'A*') {
       s1 = aStar1;
       s2 = aStar2;
-      scoreLabel = 'CORE A* Points';
     } else if (this.rankFilter === 'A') {
       s1 = a1;
       s2 = a2;
-      scoreLabel = 'CORE A Points';
+    }
+
+    let scoreLabel = 'Total Points';
+    if (this.rankFilter === 'A*') {
+      scoreLabel = isFiltered ? `CORE A* Points (${filterSummary})` : 'CORE A* Points';
+    } else if (this.rankFilter === 'A') {
+      scoreLabel = isFiltered ? `CORE A Points (${filterSummary})` : 'CORE A Points';
+    } else if (this.rankFilter === 'Journal') {
+      scoreLabel = isFiltered ? `Journals Points (${filterSummary})` : 'Journals Points';
+    } else if (isFiltered) {
+      scoreLabel = `Points (${filterSummary})`;
     }
 
     // Extract publications from authorships with resolved areas and ranks
@@ -1748,8 +1913,16 @@ export default class CompareWidget {
               </div>
               <div class="text-right">
                 <span class="text-3xl font-black text-teal-600 font-mono block">${s1.toFixed(2)}</span>
-                <span class="text-2xs text-gray-400 font-bold uppercase tracking-wider block">${scoreLabel}</span>
+                <span class="text-2xs text-gray-400 font-bold uppercase tracking-wider block">${escapeHTML(scoreLabel)}</span>
                 ${s1 > s2 ? '<span class="inline-block mt-1 text-2xs font-bold px-2.5 py-0.5 rounded-full bg-teal-100 text-teal-800 border border-teal-200">Overall Leader</span>' : ''}
+                ${rankInfo1 ? `
+                  <div class="mt-1 space-y-0.5">
+                    <span class="inline-block text-2xs font-bold font-mono px-2 py-0.5 rounded-full bg-teal-50 text-teal-700 border border-teal-200">
+                      National Rank #${rankInfo1.rank} of ${rankInfo1.total}
+                    </span>
+                    ${rankInfo1.institution_rank ? `<span class="text-3xs text-gray-400 block">#${rankInfo1.institution_rank} in ${escapeHTML(instName1)}</span>` : ''}
+                  </div>
+                ` : ''}
               </div>
             </div>
             
@@ -1770,8 +1943,16 @@ export default class CompareWidget {
               </div>
               <div class="text-right">
                 <span class="text-3xl font-black text-blue-600 font-mono block">${s2.toFixed(2)}</span>
-                <span class="text-2xs text-gray-400 font-bold uppercase tracking-wider block">${scoreLabel}</span>
+                <span class="text-2xs text-gray-400 font-bold uppercase tracking-wider block">${escapeHTML(scoreLabel)}</span>
                 ${s2 > s1 ? '<span class="inline-block mt-1 text-2xs font-bold px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800 border border-blue-200">Overall Leader</span>' : ''}
+                ${rankInfo2 ? `
+                  <div class="mt-1 space-y-0.5">
+                    <span class="inline-block text-2xs font-bold font-mono px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                      National Rank #${rankInfo2.rank} of ${rankInfo2.total}
+                    </span>
+                    ${rankInfo2.institution_rank ? `<span class="text-3xs text-gray-400 block">#${rankInfo2.institution_rank} in ${escapeHTML(instName2)}</span>` : ''}
+                  </div>
+                ` : ''}
               </div>
             </div>
 
@@ -1802,7 +1983,7 @@ export default class CompareWidget {
             <div class="space-y-1">
               <div class="flex items-center justify-between text-xs font-semibold">
                 <span class="text-teal-700 font-mono font-bold">${s1.toFixed(2)} pts</span>
-                <span class="text-gray-500 uppercase text-2xs font-bold">${scoreLabel}</span>
+                <span class="text-gray-500 uppercase text-2xs font-bold">${escapeHTML(scoreLabel)}</span>
                 <span class="text-blue-700 font-mono font-bold">${s2.toFixed(2)} pts</span>
               </div>
               <div class="h-3 w-full bg-gray-100 rounded-full overflow-hidden flex">
@@ -1840,13 +2021,13 @@ export default class CompareWidget {
             <!-- Metric 4: Total Papers -->
             <div class="space-y-1">
               <div class="flex items-center justify-between text-xs font-semibold">
-                <span class="text-teal-700 font-mono font-bold">${allPubs1.length} papers</span>
-                <span class="text-gray-500 uppercase text-2xs font-bold">Total Verified Papers</span>
-                <span class="text-blue-700 font-mono font-bold">${allPubs2.length} papers</span>
+                <span class="text-teal-700 font-mono font-bold">${pubs1.length} papers</span>
+                <span class="text-gray-500 uppercase text-2xs font-bold">${isFiltered ? `Papers Matching Filter (${escapeHTML(filterSummary)})` : 'Total Verified Papers'}</span>
+                <span class="text-blue-700 font-mono font-bold">${pubs2.length} papers</span>
               </div>
               <div class="h-3 w-full bg-gray-100 rounded-full overflow-hidden flex">
-                <div class="meter-fill-inst1 h-full" style="width: ${(allPubs1.length / ((allPubs1.length + allPubs2.length) || 1) * 100)}%;"></div>
-                <div class="meter-fill-inst2 h-full" style="width: ${(allPubs2.length / ((allPubs1.length + allPubs2.length) || 1) * 100)}%;"></div>
+                <div class="meter-fill-inst1 h-full" style="width: ${(pubs1.length / ((pubs1.length + pubs2.length) || 1) * 100)}%;"></div>
+                <div class="meter-fill-inst2 h-full" style="width: ${(pubs2.length / ((pubs1.length + pubs2.length) || 1) * 100)}%;"></div>
               </div>
             </div>
 

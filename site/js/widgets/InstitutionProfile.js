@@ -12,7 +12,6 @@ import { escapeHTML } from '../utils/sanitize.js';
 import { renderErrorCard } from '../utils/errorCard.js';
 import { AREA_TAXONOMY, BROAD_AREAS } from '../utils/areaTaxonomy.js';
 import { renderPaginationHTML, attachPaginationListeners } from './Pagination.js';
-import FACULTY_SCORES from '../data/facultyScores.js';
 
 // Hierarchical taxonomy structure for combined & sub-area filtering
 const TAXONOMY_GROUPS = [
@@ -196,26 +195,24 @@ export default class InstitutionProfileWidget {
       // Fallback to top_faculty from institution object if needed
       if (instFaculty.length === 0 && Array.isArray(instData.top_faculty)) {
         this.facultyAll = instData.top_faculty.map(f => {
-          const sc = FACULTY_SCORES[f.id];
           return {
             id: f.id,
             name: f.name,
             score: f.score,
-            a_star_score: sc?.a_star_score || 0,
-            a_score: sc?.a_score || 0,
-            areas: sc?.areas || [],
+            a_star_score: Number(f.a_star_score || 0),
+            a_score: Number(f.a_score || 0),
+            areas: f.areas || [],
             designation: f.designation || '',
             department: f.department || ''
           };
         });
       } else {
         this.facultyAll = instFaculty.map(f => {
-          const sc = FACULTY_SCORES[f.id];
           return {
             ...f,
-            a_star_score: f.a_star_score ?? (sc?.a_star_score || 0),
-            a_score: f.a_score ?? (sc?.a_score || 0),
-            areas: (f.areas && f.areas.length > 0) ? f.areas : (sc?.areas || []),
+            a_star_score: Number(f.a_star_score ?? 0),
+            a_score: Number(f.a_score ?? 0),
+            areas: (f.areas && f.areas.length > 0) ? f.areas : [],
           };
         });
       }
