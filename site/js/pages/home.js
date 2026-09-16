@@ -50,6 +50,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         ? i.institution
         : { id: i.institution_id || i.id || '', name: i.institution || i.name || '' },
       score: i.score,
+      top_faculty: i.top_faculty || [],
     }));
   }
 

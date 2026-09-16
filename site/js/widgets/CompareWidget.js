@@ -324,24 +324,20 @@ export default class CompareWidget {
   }
 
   async _fetchFilteredRankings() {
-    const isDefault = (this.areaFilter === 'all' && this.rankFilter === 'all' && this.yearFilter === 'all');
-    if (isDefault) {
-      this.filteredRankings = null;
-      return null;
-    }
-
     const params = this._getQueryParams();
     const queryStr = params.toString();
-    if (this.rankingsCache && this.rankingsCache.has(queryStr)) {
-      this.filteredRankings = this.rankingsCache.get(queryStr);
+    const cacheKey = queryStr || 'overall';
+    if (this.rankingsCache && this.rankingsCache.has(cacheKey)) {
+      this.filteredRankings = this.rankingsCache.get(cacheKey);
       return this.filteredRankings;
     }
 
     try {
-      const data = await fetchJSON(`${this.apiBase}/rankings/?${queryStr}`);
+      const url = queryStr ? `${this.apiBase}/rankings/?${queryStr}` : `${this.apiBase}/rankings/`;
+      const data = await fetchJSON(url);
       const list = Array.isArray(data) ? data : (data?.results || []);
       if (!this.rankingsCache) this.rankingsCache = new Map();
-      this.rankingsCache.set(queryStr, list);
+      this.rankingsCache.set(cacheKey, list);
       this.filteredRankings = list;
       return list;
     } catch (e) {
@@ -875,13 +871,17 @@ export default class CompareWidget {
     });
   }
 
-  _renderInstitutionComparison() {
+  async _renderInstitutionComparison() {
     const container = this.container.querySelector('#cmp-details-container');
     if (!container) return;
 
     if (!this.inst1 || !this.inst2) {
       container.innerHTML = this._renderEmptyStateHTML();
       return;
+    }
+
+    if (!this.filteredRankings) {
+      await this._fetchFilteredRankings();
     }
 
     const i1 = this.inst1;
@@ -898,15 +898,25 @@ export default class CompareWidget {
     let topFac1 = i1.top_faculty || [];
     let topFac2 = i2.top_faculty || [];
 
-    if (isFiltered && this.filteredRankings) {
+    if (this.filteredRankings) {
       const r1 = this.filteredRankings.find(r => (r.institution?.id || r.id) === i1.id);
       const r2 = this.filteredRankings.find(r => (r.institution?.id || r.id) === i2.id);
-      score1 = r1 ? Number(r1.score || 0) : 0;
-      score2 = r2 ? Number(r2.score || 0) : 0;
-      rank1 = r1 ? Number(r1.rank || 0) : null;
-      rank2 = r2 ? Number(r2.rank || 0) : null;
-      if (r1?.top_faculty && r1.top_faculty.length > 0) topFac1 = r1.top_faculty;
-      if (r2?.top_faculty && r2.top_faculty.length > 0) topFac2 = r2.top_faculty;
+      if (r1) {
+        score1 = Number(r1.score || 0);
+        rank1 = Number(r1.rank || 0);
+        if (r1.top_faculty && r1.top_faculty.length > 0) topFac1 = r1.top_faculty;
+      } else if (isFiltered) {
+        score1 = 0;
+        rank1 = null;
+      }
+      if (r2) {
+        score2 = Number(r2.score || 0);
+        rank2 = Number(r2.rank || 0);
+        if (r2.top_faculty && r2.top_faculty.length > 0) topFac2 = r2.top_faculty;
+      } else if (isFiltered) {
+        score2 = 0;
+        rank2 = null;
+      }
     } else if (isFiltered) {
       score1 = this._computeInstitutionScore(this.inst1Pubs, i1.score);
       score2 = this._computeInstitutionScore(this.inst2Pubs, i2.score);
