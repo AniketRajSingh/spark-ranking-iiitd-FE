@@ -54,6 +54,7 @@ export default class FacultyProfileWidget {
       const mergedData = { ...matched, ...data };
 
       this.render(mergedData);
+      this._enrichAreaBreakdown(mergedData);
     } catch (e) {
       console.error('[SPARK] Faculty fetch failed:', e);
       renderErrorCard(this.container, 'Could not load faculty profile.', () => this.init());
@@ -243,7 +244,7 @@ export default class FacultyProfileWidget {
             </div>
 
             <!-- Area chips -->
-            ${areaChips ? `<div class="flex flex-wrap gap-2 mt-4">${areaChips}</div>` : ''}
+            <div id="header-area-chips" class="flex flex-wrap gap-2 mt-4">${areaChips}</div>
 
             <!-- Bio -->
             <p class="mt-4 text-sm sm:text-base text-gray-600 leading-relaxed">${finalBio}</p>
@@ -303,6 +304,25 @@ export default class FacultyProfileWidget {
         </div>
       </div>
 
+      <!-- Research Fields & National Standings Card -->
+      <div id="faculty-fields-card" class="card p-6 mb-6">
+        <div class="flex items-center justify-between border-b border-gray-100 pb-3 mb-4">
+          <div>
+            <h2 class="text-lg font-bold text-gray-900 font-sans">Research Fields & Rankings</h2>
+            <p class="text-xs text-gray-500 mt-0.5">Faculty score, national ranking in India, and institution standing per field</p>
+          </div>
+          <span id="fields-badge-count" class="text-xs font-semibold text-teal-700 bg-teal-50 border border-teal-100 px-2.5 py-1 rounded-full">
+            Active Fields
+          </span>
+        </div>
+        <div id="faculty-fields-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+          <div class="p-4 rounded-xl border border-gray-100 bg-gray-50/50 animate-pulse space-y-2">
+            <div class="h-4 bg-gray-200 rounded w-1/2"></div>
+            <div class="h-6 bg-gray-200 rounded w-1/3"></div>
+          </div>
+        </div>
+      </div>
+
       <!-- Publications -->
       <div class="card p-6">
         <div class="flex items-center justify-between border-b border-gray-100 pb-3 mb-3">
@@ -312,5 +332,143 @@ export default class FacultyProfileWidget {
         <ul class="divide-y divide-gray-100">${pubsHTML}</ul>
       </div>
     `;
+  }
+
+  async _enrichAreaBreakdown(data) {
+    const gridEl = this.container.querySelector('#faculty-fields-grid');
+    const badgeCountEl = this.container.querySelector('#fields-badge-count');
+    const headerChipsEl = this.container.querySelector('#header-area-chips');
+    if (!gridEl) return;
+
+    const rawAreas = Array.isArray(data.areas) ? data.areas
+      : (data.research_areas || data.area ? [data.area] : []);
+
+    if (rawAreas.length === 0) {
+      const cardEl = this.container.querySelector('#faculty-fields-card');
+      if (cardEl) cardEl.classList.add('hidden');
+      return;
+    }
+
+    const broadMap = {};
+    for (const raw of rawAreas) {
+      const rawCode = typeof raw === 'object' ? (raw.code || raw.name || String(raw)) : String(raw);
+      const broadId = AREA_TAXONOMY[rawCode] || rawCode;
+      if (!broadMap[broadId]) broadMap[broadId] = [];
+      broadMap[broadId].push(rawCode);
+    }
+
+    const entries = Object.entries(broadMap);
+    if (badgeCountEl) {
+      badgeCountEl.textContent = `${entries.length} Active Field${entries.length > 1 ? 's' : ''}`;
+    }
+
+    const isSubpage = window.location.pathname.includes('/pages/');
+    const prefix = isSubpage ? '../' : './';
+    const instName = typeof data.institution === 'object' ? (data.institution?.name || '') : (data.institution || '');
+
+    try {
+      const results = await Promise.all(entries.map(async ([broadId, subCodes]) => {
+        const broadInfo = BROAD_AREAS.find(b => b.id === broadId);
+        const areaParam = subCodes.join(',');
+        try {
+          const res = await fetchJSON(`${this.apiBase}/faculty/?area=${areaParam}`);
+          const list = (Array.isArray(res) ? res : (res?.results || res?.faculty || []))
+            .filter(x => Number(x.score || 0) > 0)
+            .sort((a, b) => (Number(b.score) || 0) - (Number(a.score) || 0));
+
+          const idx = list.findIndex(x => String(x.id) === String(data.id));
+          if (idx >= 0) {
+            const match = list[idx];
+            return {
+              id: broadId,
+              name: broadInfo ? broadInfo.name : broadId,
+              icon: broadInfo ? broadInfo.icon : '🏷️',
+              code: areaParam,
+              score: Number(match.score || 0),
+              nationalRank: idx + 1,
+              totalInField: list.length,
+              institutionRank: match.institution_rank || null
+            };
+          } else {
+            return {
+              id: broadId,
+              name: broadInfo ? broadInfo.name : broadId,
+              icon: broadInfo ? broadInfo.icon : '🏷️',
+              code: areaParam,
+              score: 0,
+              nationalRank: null,
+              totalInField: list.length,
+              institutionRank: null
+            };
+          }
+        } catch (err) {
+          console.warn(`[SPARK] Failed to load area score for ${broadId}:`, err);
+          return null;
+        }
+      }));
+
+      const validResults = results.filter(Boolean).sort((a, b) => b.score - a.score);
+
+      if (validResults.length === 0) {
+        gridEl.innerHTML = `<p class="col-span-full text-sm text-gray-400 py-4 text-center">Could not load area rankings.</p>`;
+        return;
+      }
+
+      gridEl.innerHTML = validResults.map(a => `
+        <div class="bg-white border border-gray-100 hover:border-teal-300 rounded-xl p-4 shadow-2xs hover:shadow-sm transition-all duration-150 flex flex-col justify-between">
+          <div>
+            <div class="flex items-center justify-between gap-2">
+              <div class="flex items-center gap-2 min-w-0">
+                <span class="text-xl flex-shrink-0" aria-hidden="true">${a.icon}</span>
+                <h3 class="text-sm font-bold text-gray-900 truncate">${escapeHTML(a.name)}</h3>
+              </div>
+              <span class="flex-shrink-0 text-xs font-black font-mono text-teal-700 bg-teal-50 border border-teal-100 px-2.5 py-1 rounded-full">
+                ${a.score.toFixed(2)} pts
+              </span>
+            </div>
+
+            <div class="mt-3.5 pt-3 border-t border-gray-100 space-y-2 text-xs">
+              <div class="flex items-center justify-between">
+                <span class="text-gray-500 font-medium">National Rank:</span>
+                <span class="font-bold text-gray-900">
+                  ${a.nationalRank 
+                    ? `<span class="text-teal-700 font-black">#${a.nationalRank}</span> <span class="text-gray-400 font-normal">of ${a.totalInField} faculty</span>` 
+                    : '<span class="text-gray-400 font-normal">Unranked</span>'}
+                </span>
+              </div>
+              ${a.institutionRank ? `
+              <div class="flex items-center justify-between">
+                <span class="text-gray-500 font-medium">College Rank:</span>
+                <span class="font-bold text-gray-700">
+                  #${escapeHTML(String(a.institutionRank))} ${instName ? `<span class="text-gray-400 font-normal">in ${escapeHTML(instName)}</span>` : ''}
+                </span>
+              </div>` : ''}
+            </div>
+          </div>
+
+          <div class="mt-4 pt-3 border-t border-gray-50 flex items-center justify-between">
+            <a href="${prefix}pages/faculty.html?area=${escapeHTML(a.code)}" 
+               class="text-xs font-semibold text-teal-600 hover:text-teal-800 hover:underline inline-flex items-center gap-1">
+              View National Leaderboard ↗
+            </a>
+          </div>
+        </div>
+      `).join('');
+
+      // Also update header chips with scores & ranks
+      if (headerChipsEl) {
+        headerChipsEl.innerHTML = validResults.map(a => `
+          <a href="${prefix}pages/faculty.html?area=${escapeHTML(a.code)}" 
+             class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-teal-50 text-teal-800 border border-teal-100 hover:bg-teal-100 transition-colors">
+            <span>${a.icon}</span>
+            <span>${escapeHTML(a.name)}</span>
+            <span class="text-teal-600 font-mono font-bold">· ${a.score.toFixed(2)} pts ${a.nationalRank ? `(#${a.nationalRank})` : ''}</span>
+          </a>
+        `).join('');
+      }
+
+    } catch (e) {
+      console.error('[SPARK] Error enriching area breakdown:', e);
+    }
   }
 }
