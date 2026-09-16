@@ -4,7 +4,6 @@
 import { escapeHTML } from '../utils/sanitize.js';
 import { clearBusy } from '../utils/errorCard.js';
 import { renderPaginationHTML, attachPaginationListeners } from './Pagination.js';
-import FACULTY_SCORES from '../data/facultyScores.js';
 
 export default class FacultyListWidget {
   constructor(containerId, filters, serverTopData = null, searchQuery = '') {
@@ -76,20 +75,21 @@ export default class FacultyListWidget {
 
     if (rankFilter === 'A*') {
       scoreSuffix = 'A* pts';
-      flat = flat.map(f => {
-        const aStar = (f.a_star_score != null && f.a_star_score > 0)
-          ? f.a_star_score
-          : (FACULTY_SCORES[f.id]?.a_star_score ?? f.score);
-        return { ...f, score: aStar };
-      }).filter(f => Number(f.score) > 0);
     } else if (rankFilter === 'A') {
       scoreSuffix = 'A pts';
-      flat = flat.map(f => {
-        const aScore = (f.a_score != null && f.a_score > 0)
-          ? f.a_score
-          : (FACULTY_SCORES[f.id]?.a_score ?? f.score);
-        return { ...f, score: aScore };
-      }).filter(f => Number(f.score) > 0);
+    } else if (rankFilter === 'Journal') {
+      scoreSuffix = 'Journal pts';
+    }
+
+    // Filter out 0 scores when any filter is active
+    const currentYear = new Date().getFullYear();
+    const isFiltered = (rankFilter !== 'all') ||
+      (this.filters?.areas && this.filters.areas.size > 0) ||
+      (this.filters?.startYear && this.filters.startYear !== 2015) ||
+      (this.filters?.endYear && this.filters.endYear !== currentYear);
+
+    if (isFiltered) {
+      flat = flat.filter(f => Number(f.score || 0) > 0);
     }
 
     if (flat.length === 0) {

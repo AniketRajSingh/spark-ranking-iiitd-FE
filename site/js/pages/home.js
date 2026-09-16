@@ -5,7 +5,6 @@ import { groupAreasByBroadCategory, expandToSubCodes } from '../utils/areaTaxono
 import FilterWidget from '../widgets/Filter.js';
 import RankingTableWidget from '../widgets/RankingTable.js';
 import SearchBarWidget from '../widgets/SearchBar.js';
-import INSTITUTION_SCORES from '../data/institutionScores.js';
 
 document.addEventListener('DOMContentLoaded', async () => {
   const apiBase = (window.SPARK_CONFIG && window.SPARK_CONFIG.API_BASE) || null;
@@ -103,90 +102,30 @@ document.addEventListener('DOMContentLoaded', async () => {
       const normalised = normaliseRankings(data);
 
       let scoreLabel = 'SPARK Score';
-      let finalData = normalised;
-
       if (activeFilters.rank === 'A*') {
         scoreLabel = 'CORE A* Score';
-        const isBackendFiltered = normalised.length > 0 && 
-          normalised.some(item => {
-            const instId = item.institution?.id || item.id;
-            const overall = INSTITUTION_SCORES[instId]?.overall;
-            return overall !== undefined && Number(item.score) !== Number(overall);
-          });
-
-        if (isBackendFiltered) {
-          finalData = normalised.filter(item => Number(item.score) > 0);
-          finalData.sort((a, b) => Number(b.score) - Number(a.score));
-          finalData.forEach((item, idx) => { item.rank = idx + 1; });
-        } else {
-          finalData = finalData.map(item => {
-            const instId = item.institution?.id || item.id;
-            const tier = INSTITUTION_SCORES[instId];
-            const score = tier ? tier.a_star_score : item.score;
-            return { ...item, score };
-          }).filter(item => Number(item.score) > 0);
-          finalData.sort((a, b) => Number(b.score) - Number(a.score));
-          finalData.forEach((item, idx) => { item.rank = idx + 1; });
-        }
       } else if (activeFilters.rank === 'A') {
         scoreLabel = 'CORE A Score';
-        const isBackendFiltered = normalised.length > 0 && 
-          normalised.some(item => {
-            const instId = item.institution?.id || item.id;
-            const overall = INSTITUTION_SCORES[instId]?.overall;
-            return overall !== undefined && Number(item.score) !== Number(overall);
-          });
-
-        if (isBackendFiltered) {
-          finalData = normalised.filter(item => Number(item.score) > 0);
-          finalData.sort((a, b) => Number(b.score) - Number(a.score));
-          finalData.forEach((item, idx) => { item.rank = idx + 1; });
-        } else {
-          finalData = finalData.map(item => {
-            const instId = item.institution?.id || item.id;
-            const tier = INSTITUTION_SCORES[instId];
-            const score = tier ? tier.a_score : item.score;
-            return { ...item, score };
-          }).filter(item => Number(item.score) > 0);
-          finalData.sort((a, b) => Number(b.score) - Number(a.score));
-          finalData.forEach((item, idx) => { item.rank = idx + 1; });
-        }
       } else if (activeFilters.rank === 'Journal') {
         scoreLabel = 'Journals Score';
-        const isBackendFiltered = normalised.length > 0 && 
-          normalised.some(item => {
-            const instId = item.institution?.id || item.id;
-            const overall = INSTITUTION_SCORES[instId]?.overall;
-            return overall !== undefined && Number(item.score) !== Number(overall);
-          });
+      }
 
-        if (isBackendFiltered) {
-          finalData = normalised.filter(item => Number(item.score) > 0);
-          finalData.sort((a, b) => Number(b.score) - Number(a.score));
-          finalData.forEach((item, idx) => { item.rank = idx + 1; });
-        } else {
-          finalData = finalData.map(item => {
-            const instId = item.institution?.id || item.id;
-            const tier = INSTITUTION_SCORES[instId];
-            const score = tier ? tier.journal_score : item.score;
-            return { ...item, score };
-          }).filter(item => Number(item.score) > 0);
-          finalData.sort((a, b) => Number(b.score) - Number(a.score));
-          finalData.forEach((item, idx) => { item.rank = idx + 1; });
-        }
-      } else {
-        // Filter out 0 scores only if filters are active (non-default state)
-        const currentYear = new Date().getFullYear();
-        const isDefault = activeFilters.startYear === 2015 &&
-                          activeFilters.endYear === currentYear &&
-                          (!activeFilters.areas || activeFilters.areas.size === 0);
+      let finalData = normalised;
 
-        if (!isDefault) {
-          finalData = normalised.filter(item => {
-            const scoreNum = parseFloat(item.score);
-            return !isNaN(scoreNum) && scoreNum > 0;
-          });
-        }
+      // Filter out 0 scores and re-index ranks when any filter is active
+      const currentYear = new Date().getFullYear();
+      const isDefault = activeFilters.startYear === 2015 &&
+                        activeFilters.endYear === currentYear &&
+                        (!activeFilters.rank || activeFilters.rank === 'all') &&
+                        (!activeFilters.areas || activeFilters.areas.size === 0);
+
+      if (!isDefault) {
+        finalData = normalised.filter(item => {
+          const scoreNum = parseFloat(item.score);
+          return !isNaN(scoreNum) && scoreNum > 0;
+        });
+        finalData.sort((a, b) => (Number(b.score) || 0) - (Number(a.score) || 0));
+        finalData.forEach((item, idx) => { item.rank = idx + 1; });
       }
 
       rankingTableWidget.setData(finalData, '', scoreLabel);

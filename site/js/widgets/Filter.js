@@ -304,10 +304,24 @@ export default class FilterWidget {
         this._validateYears(sy, ey);
       };
 
+      const onYearKeydown = (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          const applyBtn = this.container.querySelector('#btn-apply-filters');
+          if (applyBtn) applyBtn.click();
+        }
+      };
+
       const startYrEl = this.container.querySelector('#start-year');
       const endYrEl = this.container.querySelector('#end-year');
-      if (startYrEl) startYrEl.addEventListener('input', onYearInput);
-      if (endYrEl) endYrEl.addEventListener('input', onYearInput);
+      if (startYrEl) {
+        startYrEl.addEventListener('input', onYearInput);
+        startYrEl.addEventListener('keydown', onYearKeydown);
+      }
+      if (endYrEl) {
+        endYrEl.addEventListener('input', onYearInput);
+        endYrEl.addEventListener('keydown', onYearKeydown);
+      }
     }
 
     // Rank select dropdown
