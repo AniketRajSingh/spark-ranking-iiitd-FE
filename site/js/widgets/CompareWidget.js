@@ -352,40 +352,75 @@ export default class CompareWidget {
   }
 
   async _fetchFilteredFacultyScores() {
-    const isDefault = (this.areaFilter === 'all' && this.rankFilter === 'all' && this.yearFilter === 'all');
-    if (isDefault) {
-      this.filteredFacultyMap = null;
-      return null;
-    }
-
     const params = this._getQueryParams();
     const queryStr = params.toString();
-    if (this.facultyLeaderboardCache && this.facultyLeaderboardCache.has(queryStr)) {
-      this.filteredFacultyMap = this.facultyLeaderboardCache.get(queryStr);
+    const cacheKey = queryStr || 'overall';
+    if (this.facultyLeaderboardCache && this.facultyLeaderboardCache.has(cacheKey)) {
+      this.filteredFacultyMap = this.facultyLeaderboardCache.get(cacheKey);
       return this.filteredFacultyMap;
     }
 
     try {
-      const data = await fetchJSON(`${this.apiBase}/faculty/?${queryStr}`);
-      const list = (Array.isArray(data) ? data : (data?.results || data?.faculty || []))
+      const url = queryStr ? `${this.apiBase}/faculty/?${queryStr}` : `${this.apiBase}/faculty/`;
+      const data = await fetchJSON(url);
+      const rawList = Array.isArray(data) ? data : (data?.results || data?.faculty || []);
+
+      const activeList = rawList
         .filter(x => Number(x.score || 0) > 0)
         .sort((a, b) => (Number(b.score) || 0) - (Number(a.score) || 0));
 
+      // Group active faculty by institution to calculate rank within institute
+      const instGroups = new Map();
+      activeList.forEach(fac => {
+        const instKey = typeof fac.institution === 'object' ? (fac.institution?.id || fac.institution?.name) : fac.institution;
+        if (!instGroups.has(instKey)) instGroups.set(instKey, []);
+        instGroups.get(instKey).push(fac);
+      });
+
       const map = new Map();
-      list.forEach((f, idx) => {
-        map.set(f.id, {
-          score: Number(f.score || 0),
+      activeList.forEach((fac, idx) => {
+        const instKey = typeof fac.institution === 'object' ? (fac.institution?.id || fac.institution?.name) : fac.institution;
+        const peers = instGroups.get(instKey) || [];
+        const rankInInst = peers.indexOf(fac) + 1;
+        const totalInInst = peers.length;
+        const instName = typeof fac.institution === 'object' ? (fac.institution?.name || '') : String(fac.institution || '');
+
+        map.set(fac.id, {
+          score: Number(fac.score || 0),
           rank: idx + 1,
-          total: list.length,
-          institution_rank: f.institution_rank || null
+          total: activeList.length,
+          rankInInst: rankInInst > 0 ? rankInInst : null,
+          totalInInst: totalInInst,
+          institution_rank: fac.institution_rank ? Number(fac.institution_rank) : null,
+          institution_name: instName,
+          institution: fac.institution
         });
       });
+
+      // Ensure every faculty in rawList has an entry even if score is 0 under active filter
+      rawList.forEach(fac => {
+        if (!map.has(fac.id)) {
+          const instKey = typeof fac.institution === 'object' ? (fac.institution?.id || fac.institution?.name) : fac.institution;
+          const instName = typeof fac.institution === 'object' ? (fac.institution?.name || '') : String(fac.institution || '');
+          map.set(fac.id, {
+            score: 0,
+            rank: null,
+            total: activeList.length,
+            rankInInst: null,
+            totalInInst: instGroups.get(instKey)?.length || 0,
+            institution_rank: fac.institution_rank ? Number(fac.institution_rank) : null,
+            institution_name: instName,
+            institution: fac.institution
+          });
+        }
+      });
+
       if (!this.facultyLeaderboardCache) this.facultyLeaderboardCache = new Map();
-      this.facultyLeaderboardCache.set(queryStr, map);
+      this.facultyLeaderboardCache.set(cacheKey, map);
       this.filteredFacultyMap = map;
       return map;
     } catch (e) {
-      console.warn('[SPARK] Failed to fetch filtered faculty leaderboard:', e);
+      console.warn('[SPARK] Failed to fetch faculty leaderboard:', e);
       this.filteredFacultyMap = null;
       return null;
     }
@@ -1747,13 +1782,17 @@ export default class CompareWidget {
     });
   }
 
-  _renderFacultyComparison() {
+  async _renderFacultyComparison() {
     const container = this.container.querySelector('#cmp-details-container');
     if (!container) return;
 
     if (!this.fac1 || !this.fac2) {
       container.innerHTML = this._renderEmptyStateHTML();
       return;
+    }
+
+    if (!this.filteredFacultyMap) {
+      await this._fetchFilteredFacultyScores();
     }
 
     const f1 = this.fac1;
@@ -1767,25 +1806,25 @@ export default class CompareWidget {
     const a1 = Number(f1.a_score || 0);
     const a2 = Number(f2.a_score || 0);
 
+    const rankInfo1 = this.filteredFacultyMap ? this.filteredFacultyMap.get(f1.id) : null;
+    const rankInfo2 = this.filteredFacultyMap ? this.filteredFacultyMap.get(f2.id) : null;
+
     // Dynamically adjust displayed score for faculty according to active rank / area / year filters
     let s1 = Number(f1.score || 0);
     let s2 = Number(f2.score || 0);
-    let rankInfo1 = null;
-    let rankInfo2 = null;
 
-    if (isFiltered && this.filteredFacultyMap) {
-      const info1 = this.filteredFacultyMap.get(f1.id);
-      const info2 = this.filteredFacultyMap.get(f2.id);
-      s1 = info1 ? info1.score : 0;
-      s2 = info2 ? info2.score : 0;
-      rankInfo1 = info1;
-      rankInfo2 = info2;
+    if (isFiltered && rankInfo1 && rankInfo2) {
+      s1 = rankInfo1.score;
+      s2 = rankInfo2.score;
     } else if (this.rankFilter === 'A*') {
       s1 = aStar1;
       s2 = aStar2;
     } else if (this.rankFilter === 'A') {
       s1 = a1;
       s2 = a2;
+    } else if (rankInfo1 && rankInfo2) {
+      s1 = rankInfo1.score;
+      s2 = rankInfo2.score;
     }
 
     let scoreLabel = 'Total Points';
@@ -1883,6 +1922,9 @@ export default class CompareWidget {
     const instName1 = typeof f1.institution === 'object' ? (f1.institution?.name || '') : (f1.institution || '');
     const instName2 = typeof f2.institution === 'object' ? (f2.institution?.name || '') : (f2.institution || '');
 
+    const instRank1 = rankInfo1?.institution_rank || (typeof f1.institution === 'object' ? f1.institution?.institution_rank || f1.institution?.rank : null);
+    const instRank2 = rankInfo2?.institution_rank || (typeof f2.institution === 'object' ? f2.institution?.institution_rank || f2.institution?.rank : null);
+
     // Pagination slicing for faculty publications
     const totalPages1 = Math.max(1, Math.ceil(pubs1.length / PUBS_PER_PAGE));
     if (this.fac1PubPage > totalPages1) this.fac1PubPage = totalPages1;
@@ -1915,14 +1957,35 @@ export default class CompareWidget {
                 <span class="text-3xl font-black text-teal-600 font-mono block">${s1.toFixed(2)}</span>
                 <span class="text-2xs text-gray-400 font-bold uppercase tracking-wider block">${escapeHTML(scoreLabel)}</span>
                 ${s1 > s2 ? '<span class="inline-block mt-1 text-2xs font-bold px-2.5 py-0.5 rounded-full bg-teal-100 text-teal-800 border border-teal-200">Overall Leader</span>' : ''}
-                ${rankInfo1 ? `
-                  <div class="mt-1 space-y-0.5">
-                    <span class="inline-block text-2xs font-bold font-mono px-2 py-0.5 rounded-full bg-teal-50 text-teal-700 border border-teal-200">
-                      National Rank #${rankInfo1.rank} of ${rankInfo1.total}
-                    </span>
-                    ${rankInfo1.institution_rank ? `<span class="text-3xs text-gray-400 block">#${rankInfo1.institution_rank} in ${escapeHTML(instName1)}</span>` : ''}
-                  </div>
-                ` : ''}
+              </div>
+            </div>
+
+            <!-- National & Institutional Standing Overview -->
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 py-3 px-3.5 bg-teal-50/60 rounded-xl border border-teal-100">
+              <div>
+                <span class="text-3xs uppercase tracking-wider font-bold text-teal-700 block">National Standing</span>
+                <div class="text-sm sm:text-base font-black text-teal-950 font-mono mt-0.5 flex items-baseline gap-1">
+                  ${rankInfo1?.rank 
+                    ? `<span>#${rankInfo1.rank}</span> <span class="text-3xs font-normal text-teal-600">of ${rankInfo1.total}</span>` 
+                    : '<span class="text-xs font-normal text-gray-400">Unranked</span>'}
+                </div>
+                <span class="text-3xs text-gray-500 block">${isFiltered ? 'in active filter' : 'across all India'}</span>
+              </div>
+              <div>
+                <span class="text-3xs uppercase tracking-wider font-bold text-teal-700 block">Rank in Institute</span>
+                <div class="text-sm sm:text-base font-black text-teal-950 font-mono mt-0.5 flex items-baseline gap-1">
+                  ${rankInfo1?.rankInInst 
+                    ? `<span>#${rankInfo1.rankInInst}</span> <span class="text-3xs font-normal text-teal-600">of ${rankInfo1.totalInInst}</span>` 
+                    : '<span class="text-xs font-normal text-gray-400">—</span>'}
+                </div>
+                <span class="text-3xs text-teal-700/80 block truncate font-medium" title="${escapeHTML(instName1)}">in ${escapeHTML(instName1)}</span>
+              </div>
+              <div class="col-span-2 sm:col-span-1 pt-1.5 sm:pt-0 border-t sm:border-t-0 border-teal-100/60">
+                <span class="text-3xs uppercase tracking-wider font-bold text-teal-700 block">Institute Rank</span>
+                <div class="text-sm sm:text-base font-black text-teal-950 font-mono mt-0.5">
+                  ${instRank1 ? `#${instRank1}` : '—'} <span class="text-3xs font-normal text-teal-600">in India</span>
+                </div>
+                <span class="text-3xs text-gray-500 block truncate" title="${escapeHTML(instName1)}">${escapeHTML(instName1)}</span>
               </div>
             </div>
             
@@ -1945,14 +2008,35 @@ export default class CompareWidget {
                 <span class="text-3xl font-black text-blue-600 font-mono block">${s2.toFixed(2)}</span>
                 <span class="text-2xs text-gray-400 font-bold uppercase tracking-wider block">${escapeHTML(scoreLabel)}</span>
                 ${s2 > s1 ? '<span class="inline-block mt-1 text-2xs font-bold px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800 border border-blue-200">Overall Leader</span>' : ''}
-                ${rankInfo2 ? `
-                  <div class="mt-1 space-y-0.5">
-                    <span class="inline-block text-2xs font-bold font-mono px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
-                      National Rank #${rankInfo2.rank} of ${rankInfo2.total}
-                    </span>
-                    ${rankInfo2.institution_rank ? `<span class="text-3xs text-gray-400 block">#${rankInfo2.institution_rank} in ${escapeHTML(instName2)}</span>` : ''}
-                  </div>
-                ` : ''}
+              </div>
+            </div>
+
+            <!-- National & Institutional Standing Overview -->
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 py-3 px-3.5 bg-blue-50/60 rounded-xl border border-blue-100">
+              <div>
+                <span class="text-3xs uppercase tracking-wider font-bold text-blue-700 block">National Standing</span>
+                <div class="text-sm sm:text-base font-black text-blue-950 font-mono mt-0.5 flex items-baseline gap-1">
+                  ${rankInfo2?.rank 
+                    ? `<span>#${rankInfo2.rank}</span> <span class="text-3xs font-normal text-blue-600">of ${rankInfo2.total}</span>` 
+                    : '<span class="text-xs font-normal text-gray-400">Unranked</span>'}
+                </div>
+                <span class="text-3xs text-gray-500 block">${isFiltered ? 'in active filter' : 'across all India'}</span>
+              </div>
+              <div>
+                <span class="text-3xs uppercase tracking-wider font-bold text-blue-700 block">Rank in Institute</span>
+                <div class="text-sm sm:text-base font-black text-blue-950 font-mono mt-0.5 flex items-baseline gap-1">
+                  ${rankInfo2?.rankInInst 
+                    ? `<span>#${rankInfo2.rankInInst}</span> <span class="text-3xs font-normal text-blue-600">of ${rankInfo2.totalInInst}</span>` 
+                    : '<span class="text-xs font-normal text-gray-400">—</span>'}
+                </div>
+                <span class="text-3xs text-blue-700/80 block truncate font-medium" title="${escapeHTML(instName2)}">in ${escapeHTML(instName2)}</span>
+              </div>
+              <div class="col-span-2 sm:col-span-1 pt-1.5 sm:pt-0 border-t sm:border-t-0 border-blue-100/60">
+                <span class="text-3xs uppercase tracking-wider font-bold text-blue-700 block">Institute Rank</span>
+                <div class="text-sm sm:text-base font-black text-blue-950 font-mono mt-0.5">
+                  ${instRank2 ? `#${instRank2}` : '—'} <span class="text-3xs font-normal text-blue-600">in India</span>
+                </div>
+                <span class="text-3xs text-gray-500 block truncate" title="${escapeHTML(instName2)}">${escapeHTML(instName2)}</span>
               </div>
             </div>
 
@@ -1969,7 +2053,7 @@ export default class CompareWidget {
           <div class="flex items-center justify-between border-b border-gray-100 pb-3">
             <div>
               <h3 class="text-sm font-bold text-gray-900">Head-to-Head Metric Performance</h3>
-              <p class="text-xs text-gray-400">Direct comparison across publication points and CORE tiers</p>
+              <p class="text-xs text-gray-400">Direct comparison across publication points, national ranks, and institute standing</p>
             </div>
             <div class="flex items-center gap-3 text-xs font-bold">
               <span class="flex items-center gap-1 text-teal-700"><span class="w-2.5 h-2.5 rounded-full bg-teal-500"></span> ${escapeHTML(f1.name)}</span>
@@ -1992,7 +2076,58 @@ export default class CompareWidget {
               </div>
             </div>
 
-            <!-- Metric 2: CORE A* Score -->
+            <!-- Metric 2: National Faculty Standing -->
+            <div class="space-y-1">
+              <div class="flex items-center justify-between text-xs font-semibold">
+                <span class="text-teal-700 font-mono font-bold ${rankInfo1?.rank && rankInfo2?.rank && rankInfo1.rank < rankInfo2.rank ? 'ring-1 ring-teal-200 bg-teal-50 px-2 py-0.5 rounded' : ''}">
+                  ${rankInfo1?.rank ? `#${rankInfo1.rank} of ${rankInfo1.total}` : 'Unranked'}
+                  ${rankInfo1?.rank && rankInfo2?.rank && rankInfo1.rank < rankInfo2.rank ? ' 🏆' : ''}
+                </span>
+                <span class="text-gray-500 uppercase text-2xs font-bold">National Faculty Rank ${isFiltered ? `(${escapeHTML(filterSummary)})` : '(Overall India)'}</span>
+                <span class="text-blue-700 font-mono font-bold ${rankInfo1?.rank && rankInfo2?.rank && rankInfo2.rank < rankInfo1.rank ? 'ring-1 ring-blue-200 bg-blue-50 px-2 py-0.5 rounded' : ''}">
+                  ${rankInfo2?.rank && rankInfo1?.rank && rankInfo2.rank < rankInfo1.rank ? '🏆 ' : ''}
+                  ${rankInfo2?.rank ? `#${rankInfo2.rank} of ${rankInfo2.total}` : 'Unranked'}
+                </span>
+              </div>
+              ${(rankInfo1?.rank && rankInfo2?.rank) ? `
+                <div class="h-2 w-full bg-gray-100 rounded-full overflow-hidden flex">
+                  <div class="meter-fill-inst1 h-full" style="width: ${(((rankInfo1.total + 1 - rankInfo1.rank) / (((rankInfo1.total + 1 - rankInfo1.rank) + (rankInfo2.total + 1 - rankInfo2.rank)) || 1)) * 100)}%;"></div>
+                  <div class="meter-fill-inst2 h-full" style="width: ${(((rankInfo2.total + 1 - rankInfo2.rank) / (((rankInfo1.total + 1 - rankInfo1.rank) + (rankInfo2.total + 1 - rankInfo2.rank)) || 1)) * 100)}%;"></div>
+                </div>
+              ` : ''}
+            </div>
+
+            <!-- Metric 3: Rank Within Own Institute -->
+            <div class="space-y-1">
+              <div class="flex items-center justify-between text-xs font-semibold">
+                <span class="text-teal-700 font-mono font-bold">
+                  ${rankInfo1?.rankInInst ? `#${rankInfo1.rankInInst} of ${rankInfo1.totalInInst}` : '—'}
+                  <span class="text-gray-400 font-normal text-3xs">(${escapeHTML(instName1)})</span>
+                </span>
+                <span class="text-gray-500 uppercase text-2xs font-bold">Rank in Institute</span>
+                <span class="text-blue-700 font-mono font-bold">
+                  ${rankInfo2?.rankInInst ? `#${rankInfo2.rankInInst} of ${rankInfo2.totalInInst}` : '—'}
+                  <span class="text-gray-400 font-normal text-3xs">(${escapeHTML(instName2)})</span>
+                </span>
+              </div>
+            </div>
+
+            <!-- Metric 4: Institute National Standing -->
+            <div class="space-y-1">
+              <div class="flex items-center justify-between text-xs font-semibold">
+                <span class="text-teal-700 font-mono font-bold">
+                  ${instRank1 ? `#${instRank1} in India` : '—'}
+                  <span class="text-gray-400 font-normal text-3xs">(${escapeHTML(instName1)})</span>
+                </span>
+                <span class="text-gray-500 uppercase text-2xs font-bold">Institute National Standing</span>
+                <span class="text-blue-700 font-mono font-bold">
+                  ${instRank2 ? `#${instRank2} in India` : '—'}
+                  <span class="text-gray-400 font-normal text-3xs">(${escapeHTML(instName2)})</span>
+                </span>
+              </div>
+            </div>
+
+            <!-- Metric 5: CORE A* Score -->
             <div class="space-y-1">
               <div class="flex items-center justify-between text-xs font-semibold">
                 <span class="text-teal-700 font-mono font-bold">${aStar1.toFixed(2)} pts</span>
@@ -2005,7 +2140,7 @@ export default class CompareWidget {
               </div>
             </div>
 
-            <!-- Metric 3: CORE A Score -->
+            <!-- Metric 6: CORE A Score -->
             <div class="space-y-1">
               <div class="flex items-center justify-between text-xs font-semibold">
                 <span class="text-teal-700 font-mono font-bold">${a1.toFixed(2)} pts</span>
@@ -2018,7 +2153,7 @@ export default class CompareWidget {
               </div>
             </div>
 
-            <!-- Metric 4: Total Papers -->
+            <!-- Metric 7: Total Papers -->
             <div class="space-y-1">
               <div class="flex items-center justify-between text-xs font-semibold">
                 <span class="text-teal-700 font-mono font-bold">${pubs1.length} papers</span>
