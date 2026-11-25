@@ -2,7 +2,8 @@
 import { escapeHTML } from '../utils/sanitize.js';
 import { clearBusy, renderSkeleton } from '../utils/errorCard.js';
 import fetchJSON from '../utils/fetchJSON.js';
-import { AREA_TAXONOMY, BROAD_AREAS } from '../utils/areaTaxonomy.js';
+import { withBasis } from '../utils/areaBasis.js';
+import { AREA_TAXONOMY, BROAD_AREAS, resolvePublicationArea } from '../utils/areaTaxonomy.js';
 import { renderPaginationHTML, attachPaginationListeners } from './Pagination.js';
 
 export default class ConferenceListWidget {
@@ -280,7 +281,7 @@ export default class ConferenceListWidget {
     try {
       if (!this._pubsPromise) {
         const apiBase = (window.SPARK_CONFIG && window.SPARK_CONFIG.API_BASE) || '';
-        this._pubsPromise = fetchJSON(`${apiBase}/publications/`);
+        this._pubsPromise = fetchJSON(withBasis(`${apiBase}/publications/`));
       }
       const data = await this._pubsPromise;
       if (!data) throw new Error('Failed to load publications');
@@ -309,7 +310,7 @@ export default class ConferenceListWidget {
       const rows = filteredPubs.map((pub, idx) => {
         const pTitle = escapeHTML(pub.title || '');
         const pYear = escapeHTML(pub.year || '');
-        const rawPArea = pub.area || '';
+        const rawPArea = resolvePublicationArea(pub);
         const broadId = AREA_TAXONOMY[rawPArea] || rawPArea;
         const areaInfo = BROAD_AREAS.find(b => b.id === broadId);
         const pArea = escapeHTML(areaInfo ? areaInfo.name : rawPArea);

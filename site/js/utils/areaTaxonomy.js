@@ -161,3 +161,32 @@ export function expandToSubCodes(selectedBroadIds, groupedAreas) {
   });
   return codes;
 }
+
+/**
+ * Resolves the research area for a publication.
+ * Uses the API's per-paper `area` first (which holds title area or venue area from backend).
+ * Falls back to conference dictionary lookup and venue taxonomy only when per-paper `area` is absent.
+ * @param {Object} pub - Publication or authorship.publication object
+ * @param {Map<string, Object>} [conferenceMap] - Optional map of uppercase venue acronym -> conference
+ * @returns {string} FoR code (e.g. '4604') or 'other'
+ */
+export function resolvePublicationArea(pub, conferenceMap = null) {
+  if (!pub) return 'other';
+  if (pub.area && pub.area !== 'null' && pub.area !== '') {
+    return String(pub.area);
+  }
+  const rawConf = pub.venue || (typeof pub.conference === 'object' ? pub.conference?.acronym : pub.conference) || '';
+  const cleanConf = String(rawConf).toUpperCase().trim();
+
+  if (conferenceMap && conferenceMap.has(cleanConf)) {
+    const c = conferenceMap.get(cleanConf);
+    if (c && c.area) return String(c.area);
+  }
+
+  if (AREA_TAXONOMY[cleanConf]) {
+    return String(AREA_TAXONOMY[cleanConf]);
+  }
+
+  return 'other';
+}
+

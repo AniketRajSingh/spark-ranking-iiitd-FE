@@ -2,9 +2,10 @@
 // No hardcoded IDs. XSS-safe. Research area chips, DBLP/Scholar links, score breakdown.
 
 import fetchJSON from '../utils/fetchJSON.js';
+import { withBasis } from '../utils/areaBasis.js';
 import { escapeHTML } from '../utils/sanitize.js';
 import { renderErrorCard } from '../utils/errorCard.js';
-import { AREA_TAXONOMY, BROAD_AREAS } from '../utils/areaTaxonomy.js';
+import { AREA_TAXONOMY, BROAD_AREAS, resolvePublicationArea } from '../utils/areaTaxonomy.js';
 
 export default class FacultyProfileWidget {
   constructor(containerSelector, apiBase) {
@@ -44,8 +45,8 @@ export default class FacultyProfileWidget {
 
     try {
       const [data, facultyList] = await Promise.all([
-        fetchJSON(`${this.apiBase}/faculty/${facultyId}/`),
-        fetchJSON(`${this.apiBase}/faculty/`)
+        fetchJSON(withBasis(`${this.apiBase}/faculty/${facultyId}/`)),
+        fetchJSON(withBasis(`${this.apiBase}/faculty/`))
       ]);
       if (!data) throw new Error('Empty faculty response');
 
@@ -141,7 +142,10 @@ export default class FacultyProfileWidget {
           year: p.year || '',
           conference: confVal,
           core_rank: p.core_rank || (typeof confVal === 'object' && confVal !== null ? confVal.core_rank : '') || '',
-          credit: p.credit || 0
+          credit: p.credit || 0,
+          area: p.area != null ? String(p.area) : null,
+          venue_area: p.venue_area != null ? String(p.venue_area) : null,
+          title_area_probability: p.title_area_probability != null ? Number(p.title_area_probability) : null
         };
       });
     } else if (Array.isArray(data.authorships)) {
@@ -155,7 +159,10 @@ export default class FacultyProfileWidget {
             year: pub.year || '',
             conference: confVal,
             core_rank: pub.core_rank || (typeof confVal === 'object' && confVal !== null ? confVal.core_rank : '') || '',
-            credit: auth.credit || 0
+            credit: auth.credit || 0,
+            area: pub.area != null ? String(pub.area) : null,
+            venue_area: pub.venue_area != null ? String(pub.venue_area) : null,
+            title_area_probability: pub.title_area_probability != null ? Number(pub.title_area_probability) : null
           };
         }
         return null;
@@ -212,14 +219,39 @@ export default class FacultyProfileWidget {
                           </span>`;
             }
           }
+          const resolvedArea = resolvePublicationArea(p);
+          const broadId = AREA_TAXONOMY[resolvedArea] || resolvedArea;
+          const bInfo = BROAD_AREAS.find(b => b.id === broadId);
+
+          let areaBadge = '';
+          if (resolvedArea && resolvedArea !== 'other') {
+            const label = bInfo ? `${resolvedArea} · ${bInfo.name}` : resolvedArea;
+            areaBadge = ` · <span class="bg-gray-100 text-gray-700 px-1.5 py-0.5 rounded text-[11px] font-medium" title="Research Area: ${escapeHTML(label)}">${escapeHTML(label)}</span>`;
+          } else if (resolvedArea === 'other') {
+            areaBadge = ` · <span class="bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded text-[11px] font-medium" title="Unclassified / Interdisciplinary">other</span>`;
+          }
+
+          let probBadge = '';
+          if (p.title_area_probability != null) {
+            const pct = Math.round(p.title_area_probability * 100);
+            probBadge = ` · <span class="text-[11px] text-teal-700 bg-teal-50 border border-teal-100 px-1.5 py-0.5 rounded font-mono font-medium" title="Title classifier probability: ${(p.title_area_probability * 100).toFixed(1)}%">${pct}% conf</span>`;
+          }
+
+          let venueDiffBadge = '';
+          if (p.venue_area && p.venue_area !== p.area) {
+            const vbInfo = BROAD_AREAS.find(b => b.id === (AREA_TAXONOMY[p.venue_area] || p.venue_area));
+            const vLabel = vbInfo ? `${p.venue_area} (${vbInfo.name})` : p.venue_area;
+            venueDiffBadge = ` · <span class="text-[11px] text-gray-400" title="Venue Area: ${escapeHTML(vLabel)}">(venue: ${escapeHTML(p.venue_area)})</span>`;
+          }
+
           return `
             <li class="py-3.5 border-b border-gray-100 last:border-0 font-sans">
               <div class="flex items-start gap-2.5">
                 ${coreBadge}
                 <div class="flex-1 min-w-0">
                   <p class="text-sm font-semibold text-gray-800 leading-snug">${title}</p>
-                  <p class="text-xs text-gray-400 mt-1">
-                    ${conf ? `<span class="font-semibold text-teal-600">${conf}</span> · ` : ''}${year}${creditText}
+                  <p class="text-xs text-gray-400 mt-1 flex items-center flex-wrap gap-y-1">
+                    ${conf ? `<span class="font-semibold text-teal-600">${conf}</span> · ` : ''}${year}${creditText}${areaBadge}${probBadge}${venueDiffBadge}
                   </p>
                 </div>
               </div>
@@ -371,7 +403,7 @@ export default class FacultyProfileWidget {
         const broadInfo = BROAD_AREAS.find(b => b.id === broadId);
         const areaParam = subCodes.join(',');
         try {
-          const res = await fetchJSON(`${this.apiBase}/faculty/?area=${areaParam}`);
+          const res = await fetchJSON(withBasis(`${this.apiBase}/faculty/?area=${areaParam}`));
           const list = (Array.isArray(res) ? res : (res?.results || res?.faculty || []))
             .filter(x => Number(x.score || 0) > 0)
             .sort((a, b) => (Number(b.score) || 0) - (Number(a.score) || 0));

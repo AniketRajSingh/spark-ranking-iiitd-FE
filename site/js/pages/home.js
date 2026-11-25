@@ -1,5 +1,6 @@
 // js/pages/home.js — SPARK Home Page Initializer
 import fetchJSON from '../utils/fetchJSON.js';
+import { withBasis } from '../utils/areaBasis.js';
 import { renderSkeleton, renderErrorCard } from '../utils/errorCard.js';
 import { groupAreasByBroadCategory, expandToSubCodes } from '../utils/areaTaxonomy.js';
 import FilterWidget from '../widgets/Filter.js';
@@ -17,7 +18,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   async function loadGroupedAreas() {
     let rawAreas = [];
     if (apiBase) {
-      const data = await fetchJSON(`${apiBase}/areas/`);
+      const data = await fetchJSON(withBasis(`${apiBase}/areas/`));
       if (data) {
         rawAreas = Array.isArray(data) ? data : (data.results || data.areas || []);
       }
@@ -98,7 +99,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     try {
       const activeFilters = filters || filterWidget.getState();
       const params = buildFilterParams(activeFilters, groupedAreas);
-      const data = await fetchJSON(`${apiBase}/rankings/?${params}`);
+      const data = await fetchJSON(withBasis(`${apiBase}/rankings/?${params}`));
       if (!data) throw new Error('Could not fetch rankings data');
       const normalised = normaliseRankings(data);
 
@@ -152,7 +153,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     renderSkeleton(rankingTableEl);
     setResultsCount(0);
     try {
-      const payload = await fetchJSON(`${apiBase}/institutions/?search=${encodeURIComponent(q)}`);
+      const payload = await fetchJSON(withBasis(`${apiBase}/institutions/?search=${encodeURIComponent(q)}`));
       if (!payload) throw new Error('Search failed');
       const items = Array.isArray(payload) ? payload : (payload.results || []);
       

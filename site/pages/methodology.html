@@ -59,8 +59,9 @@
             Publications are weighted according to the prestige tier of the corresponding research venue:
           </p>
           <ul class="list-disc list-inside mt-2 text-gray-600 text-sm sm:text-base space-y-1.5 pl-2">
-            <li><strong class="text-gray-800">CORE A* Conference / IEEE-ACM Premium Journal:</strong> 4 points</li>
-            <li><strong class="text-gray-800">CORE A Conference / IEEE-ACM Transaction:</strong> 2 points</li>
+            <li><strong class="text-gray-800">CORE A* Conference:</strong> 4 points</li>
+            <li><strong class="text-gray-800">CORE A Conference:</strong> 2 points</li>
+            <li><strong class="text-gray-800">IEEE &amp; ACM Journal / Transaction:</strong> 1 point</li>
           </ul>
         </div>
 
@@ -110,6 +111,19 @@
               </ul>
             </div>
           </div>
+
+          <!-- Research Area Assignment Basis -->
+          <div id="area-assignment-block" class="mt-4 p-4 bg-slate-50 border border-slate-200/80 rounded-xl space-y-2">
+            <div class="flex items-center justify-between flex-wrap gap-2">
+              <h4 class="text-xs sm:text-sm font-bold text-gray-800 uppercase tracking-wider">Research Area Assignment</h4>
+              <span id="area-basis-badge" class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-teal-100 text-teal-800 border border-teal-200">
+                Venue-Based (ICORE Codes)
+              </span>
+            </div>
+            <p id="area-basis-text" class="text-xs sm:text-sm text-gray-600 leading-relaxed">
+              Each conference paper is placed in the research area corresponding to the ICORE Field of Research code of its venue. Journal publications, which do not carry a venue area, are pooled under interdisciplinary / other computing.
+            </p>
+          </div>
         </div>
 
         <div>
@@ -150,6 +164,27 @@
 
   <script>
     document.getElementById('footer-year').textContent = new Date().getFullYear();
+  </script>
+  <script type="module">
+    import { fetchJSONWithBasis } from '../js/utils/fetchJSON.js';
+    import { withBasis } from '../js/utils/areaBasis.js';
+
+    const apiBase = (window.SPARK_CONFIG && window.SPARK_CONFIG.API_BASE) || '';
+    if (apiBase) {
+      fetchJSONWithBasis(withBasis(`${apiBase}/areas/`)).then(({ basis }) => {
+        const titleText = `Each paper is placed in a research area based on its title. Titles are converted into numerical representations by SPECTER2, a language model trained on scientific papers, and a classifier assigns each one an ICORE Field of Research area. The classifier learns from conference papers whose venue already has an area, and each conference paper's area is predicted by a model that did not see that paper. When the classifier is not confident, the paper keeps its venue's area. This lets journal papers, which have no venue area, count in the area they belong to.`;
+        const venueText = `Each conference paper is placed in the research area corresponding to the ICORE Field of Research code of its venue. Journal publications, which do not carry a venue area, are pooled under interdisciplinary / other computing.`;
+
+        const descEl = document.getElementById('area-basis-text');
+        const badgeEl = document.getElementById('area-basis-badge');
+        if (descEl) {
+          descEl.textContent = basis === 'title' ? titleText : venueText;
+        }
+        if (badgeEl) {
+          badgeEl.textContent = basis === 'title' ? 'Title-Based (SPECTER2 Classifier)' : 'Venue-Based (ICORE Codes)';
+        }
+      }).catch(() => {});
+    }
   </script>
 </body>
 </html>

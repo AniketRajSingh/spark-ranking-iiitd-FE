@@ -8,9 +8,10 @@
 // - Clean, responsive UI preserving the SPARK design system (.card p-6, uncrowded controls)
 
 import fetchJSON from '../utils/fetchJSON.js';
+import { withBasis, getRequestedBasis } from '../utils/areaBasis.js';
 import { escapeHTML } from '../utils/sanitize.js';
 import { renderErrorCard } from '../utils/errorCard.js';
-import { AREA_TAXONOMY, BROAD_AREAS } from '../utils/areaTaxonomy.js';
+import { AREA_TAXONOMY, BROAD_AREAS, resolvePublicationArea } from '../utils/areaTaxonomy.js';
 import { renderPaginationHTML, attachPaginationListeners } from './Pagination.js';
 
 // Hierarchical taxonomy structure for combined & sub-area filtering
@@ -171,10 +172,10 @@ export default class InstitutionProfileWidget {
     try {
       // Fetch in parallel: institution details, score trends, publications, and faculty
       const [instData, trendsData, pubData, facData] = await Promise.all([
-        fetchJSON(`${this.apiBase}/institutions/${instId}/`),
+        fetchJSON(withBasis(`${this.apiBase}/institutions/${instId}/`)),
         fetchJSON(`${this.apiBase}/institutions/${instId}/trends/`),
-        fetchJSON(`${this.apiBase}/publications/?institution=${instId}`),
-        fetchJSON(`${this.apiBase}/faculty/`)
+        fetchJSON(withBasis(`${this.apiBase}/publications/?institution=${instId}`)),
+        fetchJSON(withBasis(`${this.apiBase}/faculty/`))
       ]);
 
       if (!instData) throw new Error('Empty institution response');
@@ -238,7 +239,7 @@ export default class InstitutionProfileWidget {
       const chunk = toEnrich.slice(i, i + batchSize);
       await Promise.all(chunk.map(async (fac) => {
         try {
-          const detail = await fetchJSON(`${this.apiBase}/faculty/${fac.id}/`);
+          const detail = await fetchJSON(withBasis(`${this.apiBase}/faculty/${fac.id}/`));
           if (detail) {
             fac.areas = detail.areas || [];
             fac.a_star_score = Number(detail.a_star_score || 0);
@@ -275,11 +276,14 @@ export default class InstitutionProfileWidget {
   }
 
   _buildAreaOptionsHTML() {
-    // Generate optgroups with combined 'AI & ML (All)' + specific subfields
+    const isTitleBasis = getRequestedBasis() === 'title';
     return TAXONOMY_GROUPS.map(g => {
-      const opts = g.options.map(opt =>
-        `<option value="${escapeHTML(opt.value)}">${escapeHTML(opt.label)}</option>`
-      ).join('');
+      const opts = g.options
+        .filter(opt => !isTitleBasis || opt.value !== 'CSE')
+        .map(opt =>
+          `<option value="${escapeHTML(opt.value)}">${escapeHTML(opt.label)}</option>`
+        ).join('');
+      if (!opts) return '';
       return `<optgroup label="${escapeHTML(g.group)}">${opts}</optgroup>`;
     }).join('');
   }
@@ -531,9 +535,14 @@ export default class InstitutionProfileWidget {
     // Map raw area codes in areaScores to broad area names
     const mappedAreaScores = {};
     Object.entries(areaScores || {}).forEach(([key, val]) => {
-      const broadId = AREA_TAXONOMY[key] || key;
-      const areaInfo = BROAD_AREAS.find(b => b.id === broadId);
-      const bName = areaInfo ? areaInfo.name : broadId;
+      let bName;
+      if (key === 'other') {
+        bName = 'Interdisciplinary & Other';
+      } else {
+        const broadId = AREA_TAXONOMY[key] || key;
+        const areaInfo = BROAD_AREAS.find(b => b.id === broadId);
+        bName = areaInfo ? areaInfo.name : broadId;
+      }
       mappedAreaScores[bName] = (mappedAreaScores[bName] || 0) + Number(val);
     });
 
@@ -792,7 +801,7 @@ export default class InstitutionProfileWidget {
 
     // Filter by Research Area (Combined or Subfield)
     if (this.pubAreaFilter !== 'all') {
-      list = list.filter(p => matchesAreaFilter(p.area, this.pubAreaFilter));
+      list = list.filter(p => matchesAreaFilter(resolvePublicationArea(p), this.pubAreaFilter));
     }
 
     // Filter by Conference Venue
@@ -868,9 +877,29 @@ export default class InstitutionProfileWidget {
       }
 
       // FoR Area label
-      const broadId = AREA_TAXONOMY[p.area] || p.area;
+      const pubArea = resolvePublicationArea(p);
+      const broadId = AREA_TAXONOMY[pubArea] || pubArea;
       const bInfo = BROAD_AREAS.find(b => b.id === broadId);
-      const areaName = bInfo ? bInfo.name : p.area;
+      let areaBadge = '';
+      if (pubArea && pubArea !== 'other') {
+        const label = bInfo ? `${pubArea} · ${bInfo.name}` : pubArea;
+        areaBadge = ` · <span class="bg-gray-100 text-gray-700 px-1.5 py-0.5 rounded text-[10px] font-medium" title="Research Area: ${escapeHTML(label)}">${escapeHTML(label)}</span>`;
+      } else if (pubArea === 'other') {
+        areaBadge = ` · <span class="bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded text-[10px] font-medium">other</span>`;
+      }
+
+      let probBadge = '';
+      if (p.title_area_probability != null) {
+        const pct = Math.round(p.title_area_probability * 100);
+        probBadge = ` · <span class="text-[10px] text-teal-700 bg-teal-50 border border-teal-100 px-1.5 py-0.5 rounded font-mono font-medium" title="Title classifier probability: ${(p.title_area_probability * 100).toFixed(1)}%">${pct}% conf</span>`;
+      }
+
+      let venueDiffBadge = '';
+      if (p.venue_area && p.venue_area !== p.area) {
+        const vbInfo = BROAD_AREAS.find(b => b.id === (AREA_TAXONOMY[p.venue_area] || p.venue_area));
+        const vLabel = vbInfo ? `${p.venue_area} (${vbInfo.name})` : p.venue_area;
+        venueDiffBadge = ` · <span class="text-[10px] text-gray-400" title="Venue Area: ${escapeHTML(vLabel)}">(venue: ${escapeHTML(p.venue_area)})</span>`;
+      }
 
       return `
         <li class="py-3.5 border-b border-gray-100 last:border-0 flex items-start gap-3 hover:bg-gray-50/50 px-2 rounded-xl transition-colors">
@@ -881,8 +910,7 @@ export default class InstitutionProfileWidget {
             <h4 class="text-sm font-semibold text-gray-900 leading-snug">${title}</h4>
             <div class="flex items-center gap-2 text-xs text-gray-500 mt-1 flex-wrap">
               ${conf ? `<span class="font-medium text-teal-600">${conf}</span> · ` : ''}
-              <span>${year}</span>
-              ${areaName ? ` · <span class="bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded text-[10px] font-medium">${escapeHTML(areaName)}</span>` : ''}
+              <span>${year}</span>${areaBadge}${probBadge}${venueDiffBadge}
             </div>
           </div>
         </li>`;

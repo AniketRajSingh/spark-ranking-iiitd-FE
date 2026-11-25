@@ -1,5 +1,6 @@
 // js/pages/faculty.js — SPARK Faculty Page Initializer
 import fetchJSON from '../utils/fetchJSON.js';
+import { withBasis } from '../utils/areaBasis.js';
 import { renderSkeleton, renderErrorCard } from '../utils/errorCard.js';
 import { groupAreasByBroadCategory, expandToSubCodes, AREA_TAXONOMY } from '../utils/areaTaxonomy.js';
 import FilterWidget from '../widgets/Filter.js';
@@ -18,7 +19,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   async function loadGroupedAreas() {
     let rawAreas = [];
     if (apiBase) {
-      const data = await fetchJSON(`${apiBase}/areas/`);
+      const data = await fetchJSON(withBasis(`${apiBase}/areas/`));
       if (data) {
         rawAreas = Array.isArray(data) ? data : (data.results || data.areas || []);
       }
@@ -66,7 +67,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         params.set('search', currentSearchQuery);
       }
 
-      const facultyData = await fetchJSON(`${apiBase}/faculty/?${params.toString()}`);
+      const facultyData = await fetchJSON(withBasis(`${apiBase}/faculty/?${params.toString()}`));
       if (!facultyData) {
         throw new Error('Failed to load faculty data');
       }

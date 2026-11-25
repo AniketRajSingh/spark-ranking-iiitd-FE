@@ -15,8 +15,9 @@
 // - Interactive dual charts (Historical Trends 2015-2026 + Radar / Grouped Bar Discipline Breakdown)
 
 import fetchJSON from '../utils/fetchJSON.js';
+import { withBasis, getRequestedBasis } from '../utils/areaBasis.js';
 import { escapeHTML } from '../utils/sanitize.js';
-import { AREA_TAXONOMY, BROAD_AREAS } from '../utils/areaTaxonomy.js';
+import { AREA_TAXONOMY, BROAD_AREAS, resolvePublicationArea } from '../utils/areaTaxonomy.js';
 
 const PUBS_PER_PAGE = 8;
 
@@ -220,22 +221,7 @@ export default class CompareWidget {
   }
 
   _resolvePublicationArea(pub) {
-    if (pub.area && pub.area !== 'null' && pub.area !== '') {
-      return pub.area;
-    }
-    const rawConf = pub.venue || (typeof pub.conference === 'object' ? pub.conference?.acronym : pub.conference) || '';
-    const cleanConf = String(rawConf).toUpperCase().trim();
-
-    if (this.conferenceMap.has(cleanConf)) {
-      const c = this.conferenceMap.get(cleanConf);
-      if (c && c.area) return c.area;
-    }
-
-    if (AREA_TAXONOMY[cleanConf]) {
-      return AREA_TAXONOMY[cleanConf];
-    }
-
-    return 'other';
+    return resolvePublicationArea(pub, this.conferenceMap);
   }
 
   async _enrichInstitutionFaculty(inst) {
@@ -251,7 +237,7 @@ export default class CompareWidget {
         return { ...f, ...cached };
       }
       try {
-        const detail = await fetchJSON(`${this.apiBase}/faculty/${f.id}/`);
+        const detail = await fetchJSON(withBasis(`${this.apiBase}/faculty/${f.id}/`));
         if (detail) {
           const info = {
             areas: detail.areas || [],
@@ -326,14 +312,14 @@ export default class CompareWidget {
   async _fetchFilteredRankings() {
     const params = this._getQueryParams();
     const queryStr = params.toString();
-    const cacheKey = queryStr || 'overall';
+    const cacheKey = (queryStr || 'overall') + '_' + (getRequestedBasis() || 'default');
     if (this.rankingsCache && this.rankingsCache.has(cacheKey)) {
       this.filteredRankings = this.rankingsCache.get(cacheKey);
       return this.filteredRankings;
     }
 
     try {
-      const url = queryStr ? `${this.apiBase}/rankings/?${queryStr}` : `${this.apiBase}/rankings/`;
+      const url = queryStr ? withBasis(`${this.apiBase}/rankings/?${queryStr}`) : withBasis(`${this.apiBase}/rankings/`);
       const data = await fetchJSON(url);
       const list = Array.isArray(data) ? data : (data?.results || []);
       if (!this.rankingsCache) this.rankingsCache = new Map();
@@ -350,14 +336,14 @@ export default class CompareWidget {
   async _fetchFilteredFacultyScores() {
     const params = this._getQueryParams();
     const queryStr = params.toString();
-    const cacheKey = queryStr || 'overall';
+    const cacheKey = (queryStr || 'overall') + '_' + (getRequestedBasis() || 'default');
     if (this.facultyLeaderboardCache && this.facultyLeaderboardCache.has(cacheKey)) {
       this.filteredFacultyMap = this.facultyLeaderboardCache.get(cacheKey);
       return this.filteredFacultyMap;
     }
 
     try {
-      const url = queryStr ? `${this.apiBase}/faculty/?${queryStr}` : `${this.apiBase}/faculty/`;
+      const url = queryStr ? withBasis(`${this.apiBase}/faculty/?${queryStr}`) : withBasis(`${this.apiBase}/faculty/`);
       const data = await fetchJSON(url);
       const rawList = Array.isArray(data) ? data : (data?.results || data?.faculty || []);
 
@@ -514,10 +500,14 @@ export default class CompareWidget {
   }
 
   _buildAreaOptionsHTML() {
+    const isTitleBasis = getRequestedBasis() === 'title';
     return TAXONOMY_GROUPS.map(g => {
-      const opts = g.options.map(opt =>
-        `<option value="${escapeHTML(opt.value)}" ${this.areaFilter === opt.value ? 'selected' : ''}>${escapeHTML(opt.label)}</option>`
-      ).join('');
+      const opts = g.options
+        .filter(opt => !isTitleBasis || opt.value !== 'CSE')
+        .map(opt =>
+          `<option value="${escapeHTML(opt.value)}" ${this.areaFilter === opt.value ? 'selected' : ''}>${escapeHTML(opt.label)}</option>`
+        ).join('');
+      if (!opts) return '';
       return `<optgroup label="${escapeHTML(g.group)}">${opts}</optgroup>`;
     }).join('');
   }
@@ -827,9 +817,9 @@ export default class CompareWidget {
       suggestions: SUGGESTED_INSTITUTIONS,
       onSelect: async (item) => {
         const [inst, trends, pubs] = await Promise.all([
-          fetchJSON(`${this.apiBase}/institutions/${item.id}/`),
+          fetchJSON(withBasis(`${this.apiBase}/institutions/${item.id}/`)),
           fetchJSON(`${this.apiBase}/institutions/${item.id}/trends/`),
-          fetchJSON(`${this.apiBase}/publications/?institution=${item.id}`),
+          fetchJSON(withBasis(`${this.apiBase}/publications/?institution=${item.id}`)),
         ]);
         this.inst1 = inst;
         this.inst1Trends = Array.isArray(trends) ? trends : (trends?.results || []);
@@ -852,9 +842,9 @@ export default class CompareWidget {
       suggestions: SUGGESTED_INSTITUTIONS,
       onSelect: async (item) => {
         const [inst, trends, pubs] = await Promise.all([
-          fetchJSON(`${this.apiBase}/institutions/${item.id}/`),
+          fetchJSON(withBasis(`${this.apiBase}/institutions/${item.id}/`)),
           fetchJSON(`${this.apiBase}/institutions/${item.id}/trends/`),
-          fetchJSON(`${this.apiBase}/publications/?institution=${item.id}`),
+          fetchJSON(withBasis(`${this.apiBase}/publications/?institution=${item.id}`)),
         ]);
         this.inst2 = inst;
         this.inst2Trends = Array.isArray(trends) ? trends : (trends?.results || []);
@@ -1765,7 +1755,7 @@ export default class CompareWidget {
       endpoint: 'faculty',
       suggestions: SUGGESTED_FACULTY,
       onSelect: async (item) => {
-        this.fac1 = await fetchJSON(`${this.apiBase}/faculty/${item.id}/`);
+        this.fac1 = await fetchJSON(withBasis(`${this.apiBase}/faculty/${item.id}/`));
         this.fac1PubPage = 1;
         await Promise.all([
           this._ensureConferenceMap(),
@@ -1781,7 +1771,7 @@ export default class CompareWidget {
       endpoint: 'faculty',
       suggestions: SUGGESTED_FACULTY,
       onSelect: async (item) => {
-        this.fac2 = await fetchJSON(`${this.apiBase}/faculty/${item.id}/`);
+        this.fac2 = await fetchJSON(withBasis(`${this.apiBase}/faculty/${item.id}/`));
         this.fac2PubPage = 1;
         await Promise.all([
           this._ensureConferenceMap(),
@@ -1871,7 +1861,9 @@ export default class CompareWidget {
             venue: conf,
             rank: rank,
             credit: a.credit && Number(a.credit) > 0 ? Number(a.credit) : null,
-            area: resolvedArea
+            area: resolvedArea,
+            venue_area: p.venue_area || null,
+            title_area_probability: p.title_area_probability != null ? p.title_area_probability : null
           });
         }
       });
@@ -2425,7 +2417,7 @@ export default class CompareWidget {
       }
 
       try {
-        const data = await fetchJSON(`${this.apiBase}/${endpoint}/?search=${encodeURIComponent(val.trim())}`);
+        const data = await fetchJSON(withBasis(`${this.apiBase}/${endpoint}/?search=${encodeURIComponent(val.trim())}`));
         const items = Array.isArray(data) ? data : (data?.results || []);
         renderDropdownList(items.slice(0, 10));
       } catch (e) {

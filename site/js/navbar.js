@@ -47,6 +47,46 @@
     const placeholder = document.getElementById('navbar-placeholder');
     if (!placeholder) return;
 
+    // Basis detection
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlBasis = urlParams.get('basis');
+    const validUrlBasis = (urlBasis === 'venue' || urlBasis === 'title') ? urlBasis : null;
+    let storedBasis = null;
+    try {
+      const s = localStorage.getItem('spark.areaBasis');
+      if (s === 'venue' || s === 'title') storedBasis = s;
+    } catch (_) {}
+
+    const requestedBasis = validUrlBasis || storedBasis || null;
+    let activeBasis = requestedBasis || 'venue'; // visual default before server header check
+    const hasStoredChoice = Boolean(storedBasis || validUrlBasis);
+
+    function createBasisToggleHTML(idPrefix) {
+      const isVenue = activeBasis === 'venue';
+      const isTitle = activeBasis === 'title';
+      return `
+        <div class="flex items-center gap-1.5 bg-gray-100/90 p-0.5 rounded-lg border border-gray-200/70 text-xs font-medium" role="group" aria-label="Area classification basis">
+          <span class="text-[10px] uppercase font-bold text-gray-400 pl-1.5 pr-0.5 hidden xl:inline">Basis:</span>
+          <button type="button" id="${idPrefix}-basis-venue"
+            class="px-2 py-1 rounded-md transition-all duration-150 ${isVenue ? 'bg-white text-teal-800 shadow-sm font-semibold' : 'text-gray-500 hover:text-gray-900'}"
+            title="Classify paper area using conference venue FoR codes">
+            By venue
+          </button>
+          <button type="button" id="${idPrefix}-basis-title"
+            class="px-2 py-1 rounded-md transition-all duration-150 ${isTitle ? 'bg-white text-teal-800 shadow-sm font-semibold' : 'text-gray-500 hover:text-gray-900'}"
+            title="Classify paper area using title-based language model (SPECTER2)">
+            By title
+          </button>
+          ${hasStoredChoice ? `
+            <button type="button" id="${idPrefix}-basis-reset"
+              class="px-1.5 py-1 text-[11px] text-gray-400 hover:text-red-600 transition-colors"
+              title="Reset to server default">
+              ✕
+            </button>` : ''}
+        </div>
+      `;
+    }
+
     const linksHTML = NAV_LINKS.map(link => {
       const active = isActive(link);
       return `<a
@@ -81,10 +121,15 @@
               </div>
             </a>
 
-            <!-- Desktop nav -->
-            <nav class="hidden sm:flex items-center gap-6" role="navigation" aria-label="Main navigation">
-              ${linksHTML}
-            </nav>
+            <!-- Desktop nav & Basis toggle -->
+            <div class="hidden sm:flex items-center gap-6">
+              <nav class="flex items-center gap-6" role="navigation" aria-label="Main navigation">
+                ${linksHTML}
+              </nav>
+              <div id="desktop-basis-toggle" class="flex items-center">
+                ${createBasisToggleHTML('desktop')}
+              </div>
+            </div>
 
             <!-- Hamburger (mobile) -->
             <button
@@ -114,10 +159,82 @@
         >
           <div class="px-4 py-3 space-y-1">
             ${mobileLinksHTML}
+            <div class="pt-3 mt-2 border-t border-gray-100 flex items-center justify-between">
+              <span class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Area Basis</span>
+              ${createBasisToggleHTML('mobile')}
+            </div>
           </div>
         </div>
       </header>
     `;
+
+    function updateToggleVisuals(basisVal) {
+      ['desktop', 'mobile'].forEach(prefix => {
+        const vBtn = document.getElementById(`${prefix}-basis-venue`);
+        const tBtn = document.getElementById(`${prefix}-basis-title`);
+        if (vBtn && tBtn) {
+          if (basisVal === 'title') {
+            vBtn.className = 'px-2 py-1 rounded-md transition-all duration-150 text-gray-500 hover:text-gray-900';
+            tBtn.className = 'px-2 py-1 rounded-md transition-all duration-150 bg-white text-teal-800 shadow-sm font-semibold';
+          } else {
+            tBtn.className = 'px-2 py-1 rounded-md transition-all duration-150 text-gray-500 hover:text-gray-900';
+            vBtn.className = 'px-2 py-1 rounded-md transition-all duration-150 bg-white text-teal-800 shadow-sm font-semibold';
+          }
+        }
+      });
+    }
+
+    // Basis toggle handlers
+    function setupBasisListeners(idPrefix) {
+      const btnVenue = document.getElementById(`${idPrefix}-basis-venue`);
+      const btnTitle = document.getElementById(`${idPrefix}-basis-title`);
+      const btnReset = document.getElementById(`${idPrefix}-basis-reset`);
+
+      const applyBasis = (basisVal) => {
+        try {
+          if (basisVal) {
+            localStorage.setItem('spark.areaBasis', basisVal);
+          } else {
+            localStorage.removeItem('spark.areaBasis');
+          }
+        } catch (_) {}
+        const cleanUrl = new URL(window.location.href);
+        cleanUrl.searchParams.delete('basis');
+        if (cleanUrl.toString() !== window.location.href) {
+          window.location.href = cleanUrl.toString();
+        } else {
+          window.location.reload();
+        }
+      };
+
+      if (btnVenue) btnVenue.addEventListener('click', () => applyBasis('venue'));
+      if (btnTitle) btnTitle.addEventListener('click', () => applyBasis('title'));
+      if (btnReset) btnReset.addEventListener('click', () => applyBasis(null));
+    }
+
+    setupBasisListeners('desktop');
+    setupBasisListeners('mobile');
+
+    // React to server basis detection from any API response
+    document.addEventListener('spark:basisDetected', (e) => {
+      if (!requestedBasis && e.detail && e.detail.basis) {
+        updateToggleVisuals(e.detail.basis);
+      }
+    });
+
+    // If no choice was stored, detect server default basis from header and update buttons visually
+    if (!requestedBasis) {
+      const apiBase = (window.SPARK_CONFIG && window.SPARK_CONFIG.API_BASE) ||
+                      (window.__ENV__ && window.__ENV__.API_BASE) || '';
+      if (apiBase) {
+        fetch(`${apiBase}/areas/`).then(res => {
+          const header = res.headers ? res.headers.get('x-spark-area-basis') : null;
+          if (header && (header === 'venue' || header === 'title') && header !== activeBasis) {
+            updateToggleVisuals(header);
+          }
+        }).catch(() => {});
+      }
+    }
 
     // Hamburger toggle logic
     const toggle = document.getElementById('nav-toggle');
